@@ -64,5 +64,5 @@ name = "async_func"
 path = "src/async_func.rs"
 
 [[bin]]
-name = "axum_site"
-path = "src/axum_site.rs"
+name = "axum_run"
+path = "src/axum_run.rs"

@@ -17,3 +17,7 @@ dev-timing:
 
 dev-caching:
     cargo run --bin caching
+
+
+dev-axum:
+    cargo run --bin axum_run
