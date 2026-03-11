@@ -70,11 +70,10 @@ impl AspectCompiler {
             println!("Files: {:?}", self.config.input_files);
             println!("Aspects: {} registered", self.config.aspects.len());
             for aspect in &self.config.aspects {
-                println!("  - {}: {} ({:?}, priority: {})",
-                    aspect.aspect_name,
-                    aspect.pointcut,
-                    aspect.advice_type,
-                    aspect.priority);
+                println!(
+                    "  - {}: {} ({:?}, priority: {})",
+                    aspect.aspect_name, aspect.pointcut, aspect.advice_type, aspect.priority
+                );
             }
         }
 
@@ -115,14 +114,12 @@ mod tests {
     fn test_compiler_config() {
         let config = AspectCompilerConfig {
             input_files: vec![PathBuf::from("test.rs")],
-            aspects: vec![
-                AspectRegistration {
-                    aspect_name: "LoggingAspect".to_string(),
-                    pointcut: "execution(pub fn *(..))".to_string(),
-                    advice_type: AdviceType::Before,
-                    priority: 10,
-                },
-            ],
+            aspects: vec![AspectRegistration {
+                aspect_name: "LoggingAspect".to_string(),
+                pointcut: "execution(pub fn *(..))".to_string(),
+                advice_type: AdviceType::Before,
+                priority: 10,
+            }],
             verbose: true,
         };
 

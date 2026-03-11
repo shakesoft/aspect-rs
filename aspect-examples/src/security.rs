@@ -165,7 +165,7 @@ fn delete_user(user_id: u64) -> Result<(), String> {
 
 #[aspect(AuthorizationAspect::require_any_role(&["admin", "moderator"]))]
 #[aspect(AuditAspect::default())]
-fn ban_user(user_id: u64, reason: &str) -> Result<(), String> {
+fn ban_user(user_id: u64, reason: String) -> Result<(), String> {
     println!("  [SYSTEM] Banning user {} (reason: {})", user_id, reason);
     Ok(())
 }
@@ -205,7 +205,7 @@ fn main() {
         roles: vec!["moderator".to_string(), "user".to_string()],
     });
 
-    match ban_user(99, "spam") {
+    match ban_user(99, "spam".to_string()) {
         Ok(_) => println!("   ✓ Operation succeeded\n"),
         Err(e) => println!("   ✗ Operation failed: {}\n", e),
     }
@@ -231,9 +231,7 @@ fn main() {
     println!("5. Regular user trying to delete (will panic):");
     println!("   Attempting unauthorized operation...");
 
-    let result = std::panic::catch_unwind(|| {
-        delete_user(123)
-    });
+    let result = std::panic::catch_unwind(|| delete_user(123));
 
     match result {
         Ok(_) => println!("   ✗ Unexpected success!"),
@@ -244,9 +242,7 @@ fn main() {
     println!("6. No user logged in (will panic):");
     clear_current_user();
 
-    let result = std::panic::catch_unwind(|| {
-        view_profile(42)
-    });
+    let result = std::panic::catch_unwind(|| view_profile(42));
 
     match result {
         Ok(_) => println!("   ✗ Unexpected success!"),

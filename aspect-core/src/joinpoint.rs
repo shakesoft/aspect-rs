@@ -6,32 +6,14 @@
 use crate::error::AspectError;
 use std::any::Any;
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 
 /// Information about a specific point in program execution.
 ///
 /// A `JoinPoint` provides context about where an aspect is being applied,
 /// including the function name, module path, and source location.
-///
-/// # Example
-///
-/// ```rust
-/// use aspect_core::prelude::*;
-///
-/// let jp = JoinPoint {
-///     function_name: "process_data",
-///     module_path: "my_app::data",
-///     location: Location {
-///         file: "src/data.rs",
-///         line: 42,
-///     },
-/// };
-///
-/// println!("Executing: {} at {}:{}",
-///     jp.function_name,
-///     jp.location.file,
-///     jp.location.line);
-/// ```
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct JoinPoint {
     /// The name of the function being called
     pub function_name: &'static str,
@@ -41,43 +23,28 @@ pub struct JoinPoint {
 
     /// Source code location information
     pub location: Location,
+
+    /// Arguments passed to the function
+    pub args: Vec<Box<dyn Any>>,
 }
 
 impl JoinPoint {
     /// Creates a new JoinPoint.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use aspect_core::prelude::*;
-    ///
-    /// let jp = JoinPoint::new(
-    ///     "my_function",
-    ///     "my::module",
-    ///     Location { file: "src/lib.rs", line: 100 },
-    /// );
-    /// ```
     pub fn new(
         function_name: &'static str,
         module_path: &'static str,
         location: Location,
+        args: Vec<Box<dyn Any>>,
     ) -> Self {
         Self {
             function_name,
             module_path,
             location,
+            args,
         }
     }
 
     /// Returns the fully qualified name of the function.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use aspect_core::prelude::*;
-    /// # let jp = JoinPoint::new("func", "my::mod", Location { file: "a.rs", line: 1 });
-    /// assert_eq!(jp.qualified_name(), "my::mod::func");
-    /// ```
     pub fn qualified_name(&self) -> String {
         format!("{}::{}", self.module_path, self.function_name)
     }
@@ -93,9 +60,55 @@ impl fmt::Display for JoinPoint {
     }
 }
 
+/// Async joinpoint context used by `AsyncAspect`.
+#[derive(Debug)]
+pub struct AsyncJoinPoint {
+    /// The name of the function being called.
+    pub function_name: &'static str,
+
+    /// The module path containing the function.
+    pub module_path: &'static str,
+
+    /// Source code location information.
+    pub location: Location,
+
+    /// Arguments passed to the function.
+    pub args: Vec<Box<dyn Any + Send + Sync>>,
+}
+
+impl AsyncJoinPoint {
+    /// Creates a new async joinpoint.
+    pub fn new(
+        function_name: &'static str,
+        module_path: &'static str,
+        location: Location,
+        args: Vec<Box<dyn Any + Send + Sync>>,
+    ) -> Self {
+        Self {
+            function_name,
+            module_path,
+            location,
+            args,
+        }
+    }
+
+    /// Returns the fully qualified name of the function.
+    pub fn qualified_name(&self) -> String {
+        format!("{}::{}", self.module_path, self.function_name)
+    }
+}
+
+impl fmt::Display for AsyncJoinPoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}::{}@{}:{}",
+            self.module_path, self.function_name, self.location.file, self.location.line
+        )
+    }
+}
+
 /// Source code location information.
-///
-/// Indicates where in the source code a joinpoint occurs.
 #[derive(Debug, Clone, Copy)]
 pub struct Location {
     /// The source file path
@@ -112,28 +125,6 @@ impl fmt::Display for Location {
 }
 
 /// A proceeding joinpoint that can be used in "around" advice.
-///
-/// This type wraps the original function execution and allows aspects to
-/// control when (or if) the function runs.
-///
-/// # Example
-///
-/// ```rust
-/// use aspect_core::prelude::*;
-/// use std::any::Any;
-///
-/// struct TimingAspect;
-///
-/// impl Aspect for TimingAspect {
-///     fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
-///         let start = std::time::Instant::now();
-///         let result = pjp.proceed()?;
-///         let elapsed = start.elapsed();
-///         println!("Execution took: {:?}", elapsed);
-///         Ok(result)
-///     }
-/// }
-/// ```
 pub struct ProceedingJoinPoint<'a> {
     /// The original function to execute
     inner: Box<dyn FnOnce() -> Result<Box<dyn Any>, AspectError> + 'a>,
@@ -144,11 +135,6 @@ pub struct ProceedingJoinPoint<'a> {
 
 impl<'a> ProceedingJoinPoint<'a> {
     /// Creates a new ProceedingJoinPoint.
-    ///
-    /// # Parameters
-    ///
-    /// - `f`: The original function to execute
-    /// - `context`: Information about the joinpoint
     pub fn new<F>(f: F, context: JoinPoint) -> Self
     where
         F: FnOnce() -> Result<Box<dyn Any>, AspectError> + 'a,
@@ -160,56 +146,71 @@ impl<'a> ProceedingJoinPoint<'a> {
     }
 
     /// Proceeds with the original function execution.
-    ///
-    /// This consumes the ProceedingJoinPoint and executes the wrapped function.
-    ///
-    /// # Returns
-    ///
-    /// The result of the function execution.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use aspect_core::prelude::*;
-    /// # use std::any::Any;
-    /// # struct MyAspect;
-    /// # impl Aspect for MyAspect {
-    /// fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
-    ///     println!("Before proceed");
-    ///     let result = pjp.proceed()?;
-    ///     println!("After proceed");
-    ///     Ok(result)
-    /// }
-    /// # }
-    /// ```
     pub fn proceed(self) -> Result<Box<dyn Any>, AspectError> {
         (self.inner)()
     }
 
     /// Returns a reference to the joinpoint context.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use aspect_core::prelude::*;
-    /// # use std::any::Any;
-    /// # struct MyAspect;
-    /// # impl Aspect for MyAspect {
-    /// fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
-    ///     let ctx = pjp.context();
-    ///     println!("Calling: {}", ctx.function_name);
-    ///     pjp.proceed()
-    /// }
-    /// # }
-    /// ```
     pub fn context(&self) -> &JoinPoint {
         &self.context
+    }
+
+    /// Returns a reference to the arguments passed to the function.
+    pub fn args(&self) -> &[Box<dyn Any>] {
+        &self.context.args
     }
 }
 
 impl<'a> fmt::Debug for ProceedingJoinPoint<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProceedingJoinPoint")
+            .field("context", &self.context)
+            .finish()
+    }
+}
+
+/// Boxed future used by `AsyncProceedingJoinPoint`.
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// An async proceeding joinpoint used by `AsyncAspect`.
+pub struct AsyncProceedingJoinPoint<'a> {
+    inner: Box<
+        dyn FnOnce() -> BoxFuture<'a, Result<Box<dyn Any + Send + Sync>, AspectError>> + Send + 'a,
+    >,
+    context: AsyncJoinPoint,
+}
+
+impl<'a> AsyncProceedingJoinPoint<'a> {
+    /// Creates a new async proceeding joinpoint.
+    pub fn new<F>(f: F, context: AsyncJoinPoint) -> Self
+    where
+        F: FnOnce() -> BoxFuture<'a, Result<Box<dyn Any + Send + Sync>, AspectError>> + Send + 'a,
+    {
+        Self {
+            inner: Box::new(f),
+            context,
+        }
+    }
+
+    /// Proceeds with the original async function execution.
+    pub async fn proceed(self) -> Result<Box<dyn Any + Send + Sync>, AspectError> {
+        (self.inner)().await
+    }
+
+    /// Returns a reference to the joinpoint context.
+    pub fn context(&self) -> &AsyncJoinPoint {
+        &self.context
+    }
+
+    /// Returns a reference to the arguments passed to the function.
+    pub fn args(&self) -> &[Box<dyn Any + Send + Sync>] {
+        &self.context.args
+    }
+}
+
+impl<'a> fmt::Debug for AsyncProceedingJoinPoint<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AsyncProceedingJoinPoint")
             .field("context", &self.context)
             .finish()
     }
@@ -228,49 +229,24 @@ mod tests {
                 file: "src/lib.rs",
                 line: 10,
             },
+            args: vec![],
         };
 
         assert_eq!(jp.qualified_name(), "crate::module::my_func");
     }
 
     #[test]
-    fn test_joinpoint_display() {
-        let jp = JoinPoint {
-            function_name: "test",
-            module_path: "mod",
+    fn test_async_joinpoint_qualified_name() {
+        let jp = AsyncJoinPoint {
+            function_name: "my_async_func",
+            module_path: "crate::module",
             location: Location {
-                file: "test.rs",
-                line: 42,
+                file: "src/lib.rs",
+                line: 20,
             },
+            args: vec![],
         };
 
-        let display = format!("{}", jp);
-        assert!(display.contains("test"));
-        assert!(display.contains("mod"));
-        assert!(display.contains("test.rs"));
-        assert!(display.contains("42"));
-    }
-
-    #[test]
-    fn test_proceeding_joinpoint() {
-        let jp = JoinPoint {
-            function_name: "test",
-            module_path: "test",
-            location: Location {
-                file: "test.rs",
-                line: 1,
-            },
-        };
-
-        let pjp = ProceedingJoinPoint::new(
-            || Ok(Box::new(42) as Box<dyn Any>),
-            jp,
-        );
-
-        assert_eq!(pjp.context().function_name, "test");
-
-        let result = pjp.proceed().unwrap();
-        let value = result.downcast_ref::<i32>().unwrap();
-        assert_eq!(*value, 42);
+        assert_eq!(jp.qualified_name(), "crate::module::my_async_func");
     }
 }

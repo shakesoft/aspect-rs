@@ -22,11 +22,7 @@ impl Aspect for Logger {
     }
 
     fn after(&self, ctx: &JoinPoint, _result: &dyn Any) {
-        println!(
-            "[{}] [EXIT]  {}",
-            current_timestamp(),
-            ctx.function_name
-        );
+        println!("[{}] [EXIT]  {}", current_timestamp(), ctx.function_name);
     }
 
     fn after_error(&self, ctx: &JoinPoint, error: &AspectError) {
@@ -42,9 +38,7 @@ impl Aspect for Logger {
 /// Helper function to get current timestamp.
 fn current_timestamp() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap();
+    let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     format!("{}.{:03}", duration.as_secs(), duration.subsec_millis())
 }
 
@@ -57,7 +51,7 @@ struct User {
 
 // Apply logging aspect to a simple function
 #[aspect(Logger::default())]
-fn greet(name: &str) -> String {
+fn greet(name: String) -> String {
     format!("Hello, {}!", name)
 }
 
@@ -76,7 +70,7 @@ fn fetch_user(id: u64) -> Result<User, String> {
 
 // Apply logging aspect to a function with multiple parameters
 #[aspect(Logger::default())]
-fn process_data(input: &str, multiplier: usize) -> String {
+fn process_data(input: String, multiplier: usize) -> String {
     input.repeat(multiplier)
 }
 
@@ -85,7 +79,7 @@ fn main() {
 
     // Example 1: Simple function
     println!("1. Calling greet(\"Alice\"):");
-    let greeting = greet("Alice");
+    let greeting = greet("Alice".to_string());
     println!("   Result: {}\n", greeting);
 
     // Example 2: Function returning Result (success case)
@@ -104,7 +98,7 @@ fn main() {
 
     // Example 4: Function with multiple parameters
     println!("4. Calling process_data(\"Rust \", 3):");
-    let result = process_data("Rust ", 3);
+    let result = process_data("Rust ".to_string(), 3);
     println!("   Result: {}\n", result);
 
     println!("=== Demo Complete ===");

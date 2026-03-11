@@ -6,8 +6,8 @@
 use aspect_core::prelude::*;
 use aspect_macros::aspect;
 use std::any::Any;
-use std::time::Instant;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 /// A timing aspect that measures function execution duration.
 ///
@@ -48,9 +48,7 @@ impl Aspect for Timer {
             let elapsed = start.elapsed();
             println!(
                 "[TIMER] {} FAILED after {:?}: {:?}",
-                ctx.function_name,
-                elapsed,
-                error
+                ctx.function_name, elapsed, error
             );
         }
     }

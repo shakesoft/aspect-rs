@@ -6,13 +6,13 @@
 // without requiring per-function annotations.
 
 // Import rustc internal APIs
-extern crate rustc_middle;
 extern crate rustc_hir;
+extern crate rustc_middle;
 extern crate rustc_span;
 
-use rustc_middle::ty::TyCtxt;
-use rustc_middle::mir::Body;
 use rustc_hir::def_id::LocalDefId;
+use rustc_middle::mir::Body;
+use rustc_middle::ty::TyCtxt;
 use std::collections::HashMap;
 
 use crate::types::{FunctionMetadata, SourceLocation, Visibility};
@@ -111,11 +111,7 @@ impl<'tcx> MirAnalyzer<'tcx> {
             // Use Debug formatting as a fallback for extracting the name
             let name = format!("{:?}", data.data);
             // Extract just the name part (strip enum variant syntax)
-            let clean_name = name.split('(')
-                .next()
-                .unwrap_or(&name)
-                .trim()
-                .to_string();
+            let clean_name = name.split('(').next().unwrap_or(&name).trim().to_string();
             if !clean_name.is_empty() {
                 parts.push(clean_name);
             }
@@ -176,7 +172,7 @@ impl<'tcx> MirAnalyzer<'tcx> {
             SourceLocation {
                 file: file_name,
                 line: loc.line + 1, // Convert to 1-indexed
-                column: 0, // TODO: Extract actual column
+                column: 0,          // TODO: Extract actual column
             }
         } else {
             SourceLocation {
@@ -218,13 +214,12 @@ pub struct AnalysisStats {
 impl AnalysisStats {
     pub fn from_functions(functions: &[FunctionMetadata]) -> Self {
         let total_functions = functions.len();
-        let public_functions = functions.iter()
+        let public_functions = functions
+            .iter()
             .filter(|f| f.visibility == Visibility::Public)
             .count();
         let private_functions = total_functions - public_functions;
-        let async_functions = functions.iter()
-            .filter(|f| f.is_async)
-            .count();
+        let async_functions = functions.iter().filter(|f| f.is_async).count();
 
         Self {
             total_functions,
@@ -253,22 +248,20 @@ mod tests {
 
     #[test]
     fn test_analysis_stats() {
-        let functions = vec![
-            FunctionMetadata {
-                name: "test_fn".to_string(),
-                simple_name: "test_fn".to_string(),
-                module_path: "crate".to_string(),
-                visibility: Visibility::Public,
-                is_async: false,
-                generics: vec![],
-                return_type: "()".to_string(),
-                location: SourceLocation {
-                    file: "test.rs".to_string(),
-                    line: 1,
-                    column: 0,
-                },
+        let functions = vec![FunctionMetadata {
+            name: "test_fn".to_string(),
+            simple_name: "test_fn".to_string(),
+            module_path: "crate".to_string(),
+            visibility: Visibility::Public,
+            is_async: false,
+            generics: vec![],
+            return_type: "()".to_string(),
+            location: SourceLocation {
+                file: "test.rs".to_string(),
+                line: 1,
+                column: 0,
             },
-        ];
+        }];
 
         let stats = AnalysisStats::from_functions(&functions);
         assert_eq!(stats.total_functions, 1);

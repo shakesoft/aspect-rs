@@ -154,6 +154,7 @@ fn function_info_to_joinpoint(info: &FunctionInfo) -> aspect_core::JoinPoint {
             file: "unknown",
             line: 0,
         },
+        args: vec![],
     }
 }
 

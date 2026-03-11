@@ -106,7 +106,11 @@ impl AspectCodeGenerator {
         // Wrapper function
         let wrapper_name = self.simple_function_name(function);
         code.push_str(&format!("// Wrapper function with aspects\n"));
-        code.push_str(&format!("{} fn {}(", self.visibility_str(function), wrapper_name));
+        code.push_str(&format!(
+            "{} fn {}(",
+            self.visibility_str(function),
+            wrapper_name
+        ));
 
         // Parameters (simplified)
         code.push_str("...) ");
@@ -121,16 +125,16 @@ impl AspectCodeGenerator {
         // Create JoinPoint
         code.push_str("    let ctx = JoinPoint {\n");
         code.push_str(&format!("        function_name: \"{}\",\n", function.name));
-        code.push_str(&format!("        module_path: \"{}\",\n", function.module_path));
+        code.push_str(&format!(
+            "        module_path: \"{}\",\n",
+            function.module_path
+        ));
         code.push_str("        location: Location { ... },\n");
         code.push_str("    };\n\n");
 
         // Before aspects
         for aspect in before {
-            code.push_str(&format!(
-                "    // Before aspect: {}\n",
-                aspect.aspect_name
-            ));
+            code.push_str(&format!("    // Before aspect: {}\n", aspect.aspect_name));
             code.push_str(&format!(
                 "    {}::new().before(&ctx);\n\n",
                 aspect.aspect_name
@@ -142,10 +146,7 @@ impl AspectCodeGenerator {
 
         // After aspects
         for aspect in after {
-            code.push_str(&format!(
-                "    // After aspect: {}\n",
-                aspect.aspect_name
-            ));
+            code.push_str(&format!("    // After aspect: {}\n", aspect.aspect_name));
             code.push_str(&format!(
                 "    {}::new().after(&ctx, &result);\n\n",
                 aspect.aspect_name
@@ -177,11 +178,18 @@ impl AspectCodeGenerator {
         ));
 
         code.push_str(&format!("// Wrapper with around advice\n"));
-        code.push_str(&format!("{} fn {}(", self.visibility_str(function), wrapper_name));
+        code.push_str(&format!(
+            "{} fn {}(",
+            self.visibility_str(function),
+            wrapper_name
+        ));
         code.push_str("...) ");
 
         if !function.return_type.is_empty() && function.return_type != "()" {
-            code.push_str(&format!("-> Result<{}, AspectError> ", function.return_type));
+            code.push_str(&format!(
+                "-> Result<{}, AspectError> ",
+                function.return_type
+            ));
         } else {
             code.push_str("-> Result<(), AspectError> ");
         }
@@ -201,7 +209,9 @@ impl AspectCodeGenerator {
 
         // Create ProceedingJoinPoint
         code.push_str("\n    let pjp = ProceedingJoinPoint::new(\n");
-        code.push_str(&format!("        || Ok(Box::new({original_name}(...)) as Box<dyn Any>),\n"));
+        code.push_str(&format!(
+            "        || Ok(Box::new({original_name}(...)) as Box<dyn Any>),\n"
+        ));
         code.push_str("        ctx.clone()\n");
         code.push_str("    );\n\n");
 
@@ -324,10 +334,7 @@ pub fn generate_joinpoint(function: &FunctionMetadata) -> String {
             module_path: \"{}\",\n\
             location: Location {{ file: \"{}\", line: {} }}\n\
         }};",
-        function.name,
-        function.module_path,
-        function.location.file,
-        function.location.line
+        function.name, function.module_path, function.location.file, function.location.line
     )
 }
 
@@ -346,12 +353,18 @@ pub fn generate_around_wrapper(aspects: &[RegisteredAspect], original_call: &str
     let mut code = String::new();
 
     code.push_str("let pjp = ProceedingJoinPoint::new(\n");
-    code.push_str(&format!("    || Ok(Box::new({}) as Box<dyn Any>),\n", original_call));
+    code.push_str(&format!(
+        "    || Ok(Box::new({}) as Box<dyn Any>),\n",
+        original_call
+    ));
     code.push_str("    ctx.clone()\n");
     code.push_str(");\n");
 
     for aspect in aspects {
-        code.push_str(&format!("let pjp = {}::new().around(pjp)?;\n", aspect.aspect_name));
+        code.push_str(&format!(
+            "let pjp = {}::new().around(pjp)?;\n",
+            aspect.aspect_name
+        ));
     }
 
     code.push_str("let result = pjp.proceed()?;\n");

@@ -1,0 +1,19 @@
+# justfile - Project unified command entry
+set shell := ["pwsh", "-c"]
+# check
+check:
+    cargo check
+
+# Start Rust backend (with hot reload)
+dev-backend:
+    cargo watch -x run -w src
+
+# Start web (Vite dev mode)
+dev-loggint:
+    cargo run --bin logging
+
+dev-timing:
+    cargo run --bin timing
+
+dev-caching:
+    cargo run --bin caching

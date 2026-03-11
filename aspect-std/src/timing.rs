@@ -117,8 +117,10 @@ impl TimingAspect {
         }
 
         println!("\n=== Timing Statistics ===");
-        println!("{:<30} {:>10} {:>15} {:>15} {:>15} {:>15}",
-                 "Function", "Calls", "Total", "Average", "Min", "Max");
+        println!(
+            "{:<30} {:>10} {:>15} {:>15} {:>15} {:>15}",
+            "Function", "Calls", "Total", "Average", "Min", "Max"
+        );
         println!("{:-<100}", "");
 
         for stat in stats.values() {
@@ -199,9 +201,7 @@ mod tests {
 
     #[test]
     fn test_timing_aspect_builder() {
-        let aspect = TimingAspect::new()
-            .with_threshold(100)
-            .print_on_complete();
+        let aspect = TimingAspect::new().with_threshold(100).print_on_complete();
 
         assert_eq!(aspect.threshold_ms, Some(100));
         assert!(aspect.print_on_complete);

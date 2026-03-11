@@ -54,6 +54,7 @@ fn test_aspect_lifecycle() {
             file: "test.rs",
             line: 1,
         },
+        args: vec![],
     };
 
     aspect.before(&ctx);
@@ -75,6 +76,7 @@ fn test_aspect_error_handling() {
             file: "test.rs",
             line: 10,
         },
+        args: vec![],
     };
 
     aspect.before(&ctx);
@@ -95,6 +97,7 @@ fn test_proceeding_joinpoint() {
             file: "test.rs",
             line: 20,
         },
+        args: vec![],
     };
 
     let executed = Arc::new(Mutex::new(false));

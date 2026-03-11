@@ -52,7 +52,7 @@ fn init_database() -> Database {
 /// GET /users/:id - with logging and timing
 #[aspect(LoggingAspect::new())]
 #[aspect(TimingAspect::new())]
-fn get_user(db: Database, id: u64) -> Result<Option<User>, AspectError> {
+fn get_user(db: &Database, id: u64) -> Result<Option<User>, AspectError> {
     println!("  [HANDLER] GET /users/{}", id);
     std::thread::sleep(std::time::Duration::from_millis(10)); // Simulate work
     Ok(db.lock().unwrap().get(&id).cloned())
@@ -62,7 +62,7 @@ fn get_user(db: Database, id: u64) -> Result<Option<User>, AspectError> {
 #[aspect(LoggingAspect::new())]
 #[aspect(TimingAspect::new())]
 fn create_user(
-    db: Database,
+    db: &Database,
     id: u64,
     username: String,
     email: String,
@@ -81,8 +81,8 @@ fn create_user(
 
     let user = User {
         id,
-        username,
-        email,
+        username: username.to_string(),
+        email: email.to_string(),
     };
     db.lock().unwrap().insert(id, user.clone());
     Ok(user)
@@ -91,7 +91,7 @@ fn create_user(
 /// GET /users - with logging and timing
 #[aspect(LoggingAspect::new())]
 #[aspect(TimingAspect::new())]
-fn list_users(db: Database) -> Result<Vec<User>, AspectError> {
+fn list_users(db: &Database) -> Result<Vec<User>, AspectError> {
     println!("  [HANDLER] GET /users");
     std::thread::sleep(std::time::Duration::from_millis(20)); // Simulate work
     Ok(db.lock().unwrap().values().cloned().collect())
@@ -100,7 +100,7 @@ fn list_users(db: Database) -> Result<Vec<User>, AspectError> {
 /// DELETE /users/:id - with logging and timing
 #[aspect(LoggingAspect::new())]
 #[aspect(TimingAspect::new())]
-fn delete_user(db: Database, id: u64) -> Result<bool, AspectError> {
+fn delete_user(db: &Database, id: u64) -> Result<bool, AspectError> {
     println!("  [HANDLER] DELETE /users/{}", id);
     std::thread::sleep(std::time::Duration::from_millis(12)); // Simulate work
     Ok(db.lock().unwrap().remove(&id).is_some())
@@ -120,14 +120,14 @@ fn main() {
 
     // Simulate API requests
     println!("1. GET /users/1 (existing user)");
-    match get_user(db.clone(), 1) {
+    match get_user(&db, 1) {
         Ok(Some(user)) => println!("   Found: {} ({})\n", user.username, user.email),
         Ok(None) => println!("   Not found\n"),
         Err(e) => println!("   Error: {:?}\n", e),
     }
 
     println!("2. GET /users/999 (non-existent user)");
-    match get_user(db.clone(), 999) {
+    match get_user(&db, 999) {
         Ok(Some(user)) => println!("   Found: {}\n", user.username),
         Ok(None) => println!("   Not found\n"),
         Err(e) => println!("   Error: {:?}\n", e),
@@ -135,7 +135,7 @@ fn main() {
 
     println!("3. POST /users (create new user)");
     match create_user(
-        db.clone(),
+        &db,
         3,
         "charlie".to_string(),
         "charlie@example.com".to_string(),
@@ -145,13 +145,13 @@ fn main() {
     }
 
     println!("4. POST /users (invalid email)");
-    match create_user(db.clone(), 4, "dave".to_string(), "invalid-email".to_string()) {
+    match create_user(&db, 4, "dave".to_string(), "invalid-email".to_string()) {
         Ok(user) => println!("   Created: {}\n", user.username),
         Err(e) => println!("   Validation failed: {}\n", e),
     }
 
     println!("5. GET /users (list all)");
-    match list_users(db.clone()) {
+    match list_users(&db) {
         Ok(users) => {
             println!("   Found {} users:", users.len());
             for user in users {
@@ -163,7 +163,7 @@ fn main() {
     }
 
     println!("6. DELETE /users/2");
-    match delete_user(db.clone(), 2) {
+    match delete_user(&db, 2) {
         Ok(true) => println!("   Deleted successfully\n"),
         Ok(false) => println!("   User not found\n"),
         Err(e) => println!("   Error: {:?}\n", e),

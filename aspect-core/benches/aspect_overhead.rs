@@ -81,6 +81,7 @@ fn noop_aspect_function(x: i32) -> i32 {
             file: "benches/aspect_overhead.rs",
             line: 0,
         },
+        args: vec![],
     };
 
     aspect.before(&ctx);
@@ -100,6 +101,7 @@ fn simple_aspect_function(x: i32) -> i32 {
             file: "benches/aspect_overhead.rs",
             line: 0,
         },
+        args: vec![],
     };
 
     aspect.before(&ctx);
@@ -119,6 +121,7 @@ fn complex_aspect_function(x: i32) -> Result<i32, AspectError> {
             file: "benches/aspect_overhead.rs",
             line: 0,
         },
+        args: vec![],
     };
 
     let pjp = ProceedingJoinPoint::new(|| Ok(Box::new(baseline_function(x)) as Box<dyn Any>), ctx);
@@ -158,9 +161,7 @@ fn bench_complex_aspect(c: &mut Criterion) {
 fn bench_aspect_overhead_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("aspect_overhead");
 
-    group.bench_function("baseline", |b| {
-        b.iter(|| baseline_function(black_box(42)))
-    });
+    group.bench_function("baseline", |b| b.iter(|| baseline_function(black_box(42))));
 
     group.bench_function("noop", |b| b.iter(|| noop_aspect_function(black_box(42))));
 
@@ -185,6 +186,7 @@ fn bench_joinpoint_creation(c: &mut Criterion) {
                     file: "test.rs",
                     line: 42,
                 },
+                args: vec![],
             })
         })
     });
@@ -192,18 +194,17 @@ fn bench_joinpoint_creation(c: &mut Criterion) {
 
 fn bench_proceedingjoinpoint(c: &mut Criterion) {
     c.bench_function("proceedingjoinpoint_proceed", |b| {
-        let ctx = JoinPoint {
-            function_name: "test",
-            module_path: "test::module",
-            location: Location {
-                file: "test.rs",
-                line: 42,
-            },
-        };
-
         b.iter(|| {
-            let pjp =
-                ProceedingJoinPoint::new(|| Ok(Box::new(42) as Box<dyn Any>), ctx.clone());
+            let ctx = JoinPoint {
+                function_name: "test",
+                module_path: "test::module",
+                location: Location {
+                    file: "test.rs",
+                    line: 42,
+                },
+                args: vec![],
+            };
+            let pjp = ProceedingJoinPoint::new(|| Ok(Box::new(42) as Box<dyn Any>), ctx);
             black_box(pjp.proceed().unwrap())
         })
     });

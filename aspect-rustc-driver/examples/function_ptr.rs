@@ -12,7 +12,7 @@ use rustc_middle::ty::TyCtxt;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use aspect_driver::mir_analyzer::{MirAnalyzer, AnalysisStats};
+use aspect_driver::mir_analyzer::{AnalysisStats, MirAnalyzer};
 use aspect_driver::types::FunctionMetadata;
 
 // Global state

@@ -13,7 +13,7 @@ use rustc_middle::ty::TyCtxt;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use aspect_driver::mir_analyzer::{MirAnalyzer, AnalysisStats};
+use aspect_driver::mir_analyzer::{AnalysisStats, MirAnalyzer};
 use aspect_driver::types::FunctionMetadata;
 
 // Global state to collect results
@@ -120,7 +120,10 @@ fn main() {
                 println!("  • {}", func.name);
                 println!("    Visibility: {:?}", func.visibility);
                 println!("    Module: {}", func.module_path);
-                println!("    Location: {}:{}", func.location.file, func.location.line);
+                println!(
+                    "    Location: {}:{}",
+                    func.location.file, func.location.line
+                );
             }
         }
 

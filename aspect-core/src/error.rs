@@ -113,9 +113,9 @@ impl fmt::Display for AspectError {
 impl Error for AspectError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::ExecutionError { source, .. } => {
-                source.as_ref().map(|e| e.as_ref() as &(dyn Error + 'static))
-            }
+            Self::ExecutionError { source, .. } => source
+                .as_ref()
+                .map(|e| e.as_ref() as &(dyn Error + 'static)),
             Self::Custom(err) => Some(err.as_ref()),
             _ => None,
         }

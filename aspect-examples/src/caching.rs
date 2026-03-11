@@ -36,8 +36,7 @@ impl Aspect for CacheMonitor {
 
         println!(
             "[CACHE-MONITOR] Call #{} to {} - cache miss, executing function",
-            call_num,
-            ctx.function_name
+            call_num, ctx.function_name
         );
     }
 
@@ -59,7 +58,7 @@ fn compute_expensive(n: u64) -> u64 {
 }
 
 #[aspect(CacheMonitor::new())]
-fn fetch_data(key: &str) -> String {
+fn fetch_data(key: String) -> String {
     // Simulate data fetching
     std::thread::sleep(std::time::Duration::from_millis(30));
     format!("Data for key: {}", key)
@@ -96,10 +95,10 @@ fn main() {
 
     // Example 2: Data fetching
     println!("2. Calling fetch_data with same key twice:");
-    let data1 = fetch_data("user:42");
+    let data1 = fetch_data("user:42".to_string());
     println!("   Result: {}\n", data1);
 
-    let data2 = fetch_data("user:42");
+    let data2 = fetch_data("user:42".to_string());
     println!("   Result: {}\n", data2);
 
     println!("Note: Second call could use cached data.\n");

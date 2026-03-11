@@ -303,10 +303,9 @@ mod tests {
     fn test_parse_operator_precedence() {
         // Without parens: A || B && C should parse as A || (B && C)
         // because AND has higher precedence than OR
-        let pc1 = parse_pointcut(
-            "execution(fn a(..)) || execution(fn b(..)) && within(crate::api)",
-        )
-        .unwrap();
+        let pc1 =
+            parse_pointcut("execution(fn a(..)) || execution(fn b(..)) && within(crate::api)")
+                .unwrap();
 
         match pc1 {
             Pointcut::Or(left, right) => {

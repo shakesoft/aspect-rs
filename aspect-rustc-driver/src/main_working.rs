@@ -15,7 +15,7 @@ use rustc_middle::ty::TyCtxt;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use aspect_driver::mir_analyzer::{MirAnalyzer, AnalysisStats};
+use aspect_driver::mir_analyzer::{AnalysisStats, MirAnalyzer};
 use aspect_driver::types::{FunctionMetadata, Visibility};
 
 /// Global configuration (needed for query provider function pointers)
@@ -191,7 +191,10 @@ fn main() {
     if let Some(results) = RESULTS.lock().unwrap().as_ref() {
         println!("\n=== Aspect Weaving Analysis Complete ===");
         println!("Functions analyzed: {}", results.functions.len());
-        println!("Functions matched by pointcuts: {}", results.matched_functions.len());
+        println!(
+            "Functions matched by pointcuts: {}",
+            results.matched_functions.len()
+        );
 
         // Write output file if requested
         if let Some(ref output_path) = aspect_config.output_file {
@@ -221,7 +224,11 @@ fn write_output_file(path: &PathBuf, results: &AnalysisResults) -> std::io::Resu
     for func in &results.functions {
         writeln!(file, "  • {} ({:?})", func.name, func.visibility)?;
         writeln!(file, "    Module: {}", func.module_path)?;
-        writeln!(file, "    Location: {}:{}", func.location.file, func.location.line)?;
+        writeln!(
+            file,
+            "    Location: {}:{}",
+            func.location.file, func.location.line
+        )?;
     }
 
     writeln!(file)?;

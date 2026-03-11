@@ -2,7 +2,9 @@
 //
 // This example shows the Phase 3 infrastructure in action
 
-use aspect_driver::compiler::{AspectCompiler, AspectCompilerConfig, AspectRegistration, AdviceType};
+use aspect_driver::compiler::{
+    AdviceType, AspectCompiler, AspectCompilerConfig, AspectRegistration,
+};
 use std::path::PathBuf;
 
 fn main() {
@@ -10,10 +12,7 @@ fn main() {
 
     // Configure aspect weaving
     let config = AspectCompilerConfig {
-        input_files: vec![
-            PathBuf::from("src/main.rs"),
-            PathBuf::from("src/lib.rs"),
-        ],
+        input_files: vec![PathBuf::from("src/main.rs"), PathBuf::from("src/lib.rs")],
         aspects: vec![
             AspectRegistration {
                 aspect_name: "LoggingAspect".to_string(),

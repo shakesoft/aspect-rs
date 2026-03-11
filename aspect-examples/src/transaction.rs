@@ -129,6 +129,18 @@ impl Aspect for TransactionalAspect {
         let conn = POOL.lock().unwrap().get_connection();
         let mut tx = conn.lock().unwrap().begin_transaction();
 
+        for (i, arg) in pjp.args().iter().enumerate() {
+            if let Some(v) = arg.downcast_ref::<u64>() {
+                println!("  [TX] Argument {}: type=u64, value={}", i, v);
+            } else if let Some(v) = arg.downcast_ref::<f64>() {
+                println!("  [TX] Argument {}: type=f64, value={}", i, v);
+            } else if let Some(v) = arg.downcast_ref::<String>() {
+                println!("  [TX] Argument {}: type=String, value=\"{}\"", i, v);
+            } else {
+                println!("  [TX] Argument {}: unknown type", i);
+            }
+        }
+
         // Execute the function
         match pjp.proceed() {
             Ok(result) => {
@@ -188,7 +200,7 @@ fn transfer_money(from_account: u64, to_account: u64, amount: f64) -> Result<(),
 }
 
 #[aspect(TransactionalAspect)]
-fn create_user_with_account(username: &str, initial_balance: f64) -> Result<u64, String> {
+fn create_user_with_account(username: String, initial_balance: f64) -> Result<u64, String> {
     println!(
         "  [APP] Creating user '{}' with balance ${:.2}",
         username, initial_balance
@@ -198,7 +210,10 @@ fn create_user_with_account(username: &str, initial_balance: f64) -> Result<u64,
     let conn = conn.lock().unwrap();
 
     // Insert user
-    conn.execute(&format!("INSERT INTO users (username) VALUES ('{}')", username))?;
+    conn.execute(&format!(
+        "INSERT INTO users (username) VALUES ('{}')",
+        username
+    ))?;
     let user_id = 123; // Simulated generated ID
 
     // Create account
@@ -238,7 +253,7 @@ fn main() {
 
     // Example 2: Creating user with account
     println!("2. Creating user with account:");
-    match create_user_with_account("alice", 100.00) {
+    match create_user_with_account("alice".to_string(), 100.00) {
         Ok(user_id) => println!("   ✓ User created with ID: {}\n", user_id),
         Err(e) => println!("   ✗ Creation failed: {}\n", e),
     }

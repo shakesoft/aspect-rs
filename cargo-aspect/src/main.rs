@@ -201,10 +201,7 @@ fn run_aspect_command(args: AspectArgs) -> Result<()> {
             Ok(())
         }
 
-        Some(AspectCommand::List {
-            aspects,
-            pointcuts,
-        }) => {
+        Some(AspectCommand::List { aspects, pointcuts }) => {
             println!("=== Registered Aspects ===");
             println!();
 

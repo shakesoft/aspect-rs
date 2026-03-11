@@ -93,7 +93,10 @@ fn unstable_service(fail_until: usize) -> Result<String, String> {
 
     if call_num < fail_until {
         println!("  [SERVICE] Call #{} - FAILING", call_num);
-        Err(format!("Service temporarily unavailable (call #{})", call_num))
+        Err(format!(
+            "Service temporarily unavailable (call #{})",
+            call_num
+        ))
     } else {
         println!("  [SERVICE] Call #{} - SUCCESS", call_num);
         Ok(format!("Data from call #{}", call_num))

@@ -40,10 +40,12 @@
 #![feature(rustc_private)]
 #![allow(unused_imports)]
 
+extern crate rustc_driver;
+
 pub mod extract;
-pub mod types;
-pub mod r#match;
 pub mod generate;
+pub mod r#match;
+pub mod types;
 
 // Phase 3 Week 9-10: Actual compiler integration
 // Requires nightly Rust with rustc-dev component

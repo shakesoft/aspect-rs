@@ -42,7 +42,11 @@ impl MetricsAspect {
 
     /// Get call count for a function.
     pub fn get_count(&self, function_name: &str) -> u64 {
-        self.counters.lock().get(function_name).copied().unwrap_or(0)
+        self.counters
+            .lock()
+            .get(function_name)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Get duration histogram for a function.
@@ -97,7 +101,11 @@ impl Aspect for MetricsAspect {
         let start = Instant::now();
 
         // Increment counter
-        *self.counters.lock().entry(function_name.clone()).or_insert(0) += 1;
+        *self
+            .counters
+            .lock()
+            .entry(function_name.clone())
+            .or_insert(0) += 1;
 
         let result = pjp.proceed();
 
@@ -106,7 +114,7 @@ impl Aspect for MetricsAspect {
         self.histograms
             .lock()
             .entry(function_name)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(duration);
 
         result
@@ -129,8 +137,16 @@ mod tests {
     fn test_metrics_increment() {
         let metrics = MetricsAspect::new();
 
-        *metrics.counters.lock().entry("test".to_string()).or_insert(0) += 1;
-        *metrics.counters.lock().entry("test".to_string()).or_insert(0) += 1;
+        *metrics
+            .counters
+            .lock()
+            .entry("test".to_string())
+            .or_insert(0) += 1;
+        *metrics
+            .counters
+            .lock()
+            .entry("test".to_string())
+            .or_insert(0) += 1;
 
         assert_eq!(metrics.get_count("test"), 2);
     }

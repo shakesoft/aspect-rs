@@ -15,7 +15,7 @@ use rustc_session::config;
 use std::path::PathBuf;
 use std::process::Command;
 
-use aspect_driver::mir_analyzer::{MirAnalyzer, AnalysisStats};
+use aspect_driver::mir_analyzer::{AnalysisStats, MirAnalyzer};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

@@ -25,33 +25,33 @@
 //! }
 //! ```
 
-pub mod logging;
-pub mod timing;
+pub mod authorization;
 pub mod caching;
+pub mod circuitbreaker;
+pub mod logging;
 pub mod metrics;
 pub mod ratelimit;
-pub mod circuitbreaker;
-pub mod authorization;
+pub mod timing;
 pub mod validation;
 
 // Re-export commonly used types
-pub use logging::LoggingAspect;
-pub use timing::TimingAspect;
+pub use authorization::{AuthMode, AuthorizationAspect};
 pub use caching::CachingAspect;
+pub use circuitbreaker::{CircuitBreakerAspect, CircuitState};
+pub use logging::LoggingAspect;
 pub use metrics::MetricsAspect;
 pub use ratelimit::RateLimitAspect;
-pub use circuitbreaker::{CircuitBreakerAspect, CircuitState};
-pub use authorization::{AuthorizationAspect, AuthMode};
+pub use timing::TimingAspect;
 pub use validation::{ValidationAspect, ValidationRule};
 
 /// Prelude module for convenient imports.
 pub mod prelude {
-    pub use crate::logging::LoggingAspect;
-    pub use crate::timing::TimingAspect;
+    pub use crate::authorization::{AuthMode, AuthorizationAspect};
     pub use crate::caching::CachingAspect;
+    pub use crate::circuitbreaker::{CircuitBreakerAspect, CircuitState};
+    pub use crate::logging::LoggingAspect;
     pub use crate::metrics::MetricsAspect;
     pub use crate::ratelimit::RateLimitAspect;
-    pub use crate::circuitbreaker::{CircuitBreakerAspect, CircuitState};
-    pub use crate::authorization::{AuthorizationAspect, AuthMode};
+    pub use crate::timing::TimingAspect;
     pub use crate::validation::{ValidationAspect, ValidationRule};
 }

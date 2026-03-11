@@ -1,7 +1,7 @@
 //! Abstract Syntax Tree for pointcut expressions.
 
-use super::pattern::{ExecutionPattern, ModulePattern};
 use super::parser::parse_pointcut;
+use super::pattern::{ExecutionPattern, ModulePattern};
 
 /// A pointcut expression that matches joinpoints (functions).
 #[derive(Debug, Clone, PartialEq)]

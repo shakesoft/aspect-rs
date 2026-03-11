@@ -10,7 +10,7 @@ use rustc_driver::{Callbacks, Compilation, RunCompiler};
 use rustc_interface::interface;
 use rustc_middle::ty::TyCtxt;
 
-use aspect_driver::mir_analyzer::{MirAnalyzer, AnalysisStats};
+use aspect_driver::mir_analyzer::{AnalysisStats, MirAnalyzer};
 
 struct MirExtractorCallbacks {
     verbose: bool,

@@ -62,9 +62,8 @@ impl Parse for AdviceArgs {
             }
         }
 
-        let pointcut = pointcut.ok_or_else(|| {
-            Error::new(input.span(), "Missing required attribute: pointcut")
-        })?;
+        let pointcut = pointcut
+            .ok_or_else(|| Error::new(input.span(), "Missing required attribute: pointcut"))?;
 
         Ok(AdviceArgs {
             pointcut,
@@ -97,7 +96,10 @@ pub fn transform(args: AdviceArgs, func: ItemFn) -> Result<TokenStream> {
         Some(other) => {
             return Err(Error::new_spanned(
                 &func.sig.ident,
-                format!("Invalid advice type: {}. Must be one of: before, after, after_error, around", other),
+                format!(
+                    "Invalid advice type: {}. Must be one of: before, after, after_error, around",
+                    other
+                ),
             ))
         }
     };

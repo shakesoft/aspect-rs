@@ -105,7 +105,9 @@ fn main() {
 
     // Circuit Breaker Demo
     println!("2. Circuit Breaker (opens after 2 failures)");
-    unsafe { FAIL_NEXT = true; }
+    unsafe {
+        FAIL_NEXT = true;
+    }
 
     for i in 1..=4 {
         match unreliable_service() {

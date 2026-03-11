@@ -89,11 +89,9 @@ impl Aspect for ValidationAspect {
         self.validate(pjp.context())?;
 
         // Execute the function
-        let result = pjp.proceed();
-
         // Note: After-validation is not supported in this simplified version
         // as it would require cloning the context
-        result
+        pjp.proceed()
     }
 }
 
@@ -237,6 +235,7 @@ mod tests {
                 file: "test.rs",
                 line: 1,
             },
+            args: vec![],
         };
 
         assert!(validator.validate(&ctx).is_ok());
@@ -252,6 +251,7 @@ mod tests {
                 file: "test.rs",
                 line: 1,
             },
+            args: vec![],
         };
 
         assert!(validator.validate(&ctx).is_err());
@@ -267,6 +267,7 @@ mod tests {
                 file: "test.rs",
                 line: 1,
             },
+            args: vec![],
         };
 
         assert!(validator.validate(&ctx).is_ok());
@@ -282,6 +283,7 @@ mod tests {
                 file: "test.rs",
                 line: 1,
             },
+            args: vec![],
         };
 
         let result = validator.validate(&ctx);
@@ -299,6 +301,7 @@ mod tests {
                 file: "test.rs",
                 line: 1,
             },
+            args: vec![],
         };
 
         assert!(validator.validate(&ctx).is_ok());
@@ -314,6 +317,7 @@ mod tests {
                 file: "test.rs",
                 line: 1,
             },
+            args: vec![],
         };
 
         let result = validator.validate(&ctx);

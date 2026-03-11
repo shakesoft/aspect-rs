@@ -9,11 +9,11 @@
 
 // Import rustc internals
 extern crate rustc_driver;
+extern crate rustc_errors;
 extern crate rustc_interface;
 extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
-extern crate rustc_errors;
 
 use rustc_driver::{Callbacks, Compilation, RunCompiler};
 use rustc_interface::interface;
@@ -22,7 +22,7 @@ use rustc_session::config::ErrorOutputType;
 use std::path::PathBuf;
 use std::process::Command;
 
-use aspect_driver::mir_analyzer::{MirAnalyzer, AnalysisStats};
+use aspect_driver::mir_analyzer::{AnalysisStats, MirAnalyzer};
 use aspect_driver::types::FunctionMetadata;
 
 /// Configuration for aspect weaving

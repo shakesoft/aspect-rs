@@ -17,12 +17,10 @@ fn main() {
     println!("1. Parsing Pointcut Expressions:");
     println!();
 
-    let pc1 = Pointcut::parse("execution(pub fn *(..))")
-        .expect("Failed to parse pointcut");
+    let pc1 = Pointcut::parse("execution(pub fn *(..))").expect("Failed to parse pointcut");
     println!("   Parsed: execution(pub fn *(..))");
 
-    let pc2 = Pointcut::parse("within(crate::api)")
-        .expect("Failed to parse pointcut");
+    let pc2 = Pointcut::parse("within(crate::api)").expect("Failed to parse pointcut");
     println!("   Parsed: within(crate::api)");
 
     let pc3 = Pointcut::parse("execution(pub fn *(..)) && within(crate::api)")
@@ -93,8 +91,7 @@ fn main() {
     println!();
 
     // Name patterns
-    let save_pattern = Pointcut::parse("execution(fn save_user(..))")
-        .expect("Failed to parse");
+    let save_pattern = Pointcut::parse("execution(fn save_user(..))").expect("Failed to parse");
     println!("   Exact name match: execution(fn save_user(..))");
     for func in &functions {
         if save_pattern.matches(func) {
@@ -116,8 +113,8 @@ fn main() {
     println!("4. OR Combinations:");
     println!();
 
-    let or_pattern = Pointcut::parse("within(crate::api) || within(crate::admin)")
-        .expect("Failed to parse");
+    let or_pattern =
+        Pointcut::parse("within(crate::api) || within(crate::admin)").expect("Failed to parse");
     println!("   Pointcut: within(crate::api) || within(crate::admin)");
     println!("   Meaning: Functions in API OR admin modules");
     println!();
@@ -132,11 +129,12 @@ fn main() {
     println!("4b. Parentheses for Grouping:");
     println!();
 
-    let grouped = Pointcut::parse(
-        "(within(crate::api) || within(crate::admin)) && execution(pub fn *(..))",
-    )
-    .expect("Failed to parse");
-    println!("   Pointcut: (within(crate::api) || within(crate::admin)) && execution(pub fn *(..))");
+    let grouped =
+        Pointcut::parse("(within(crate::api) || within(crate::admin)) && execution(pub fn *(..))")
+            .expect("Failed to parse");
+    println!(
+        "   Pointcut: (within(crate::api) || within(crate::admin)) && execution(pub fn *(..))"
+    );
     println!("   Meaning: Public functions in API OR admin modules");
     println!();
     for func in &functions {

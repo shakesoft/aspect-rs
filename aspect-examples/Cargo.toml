@@ -12,6 +12,12 @@ aspect-core = { workspace = true }
 aspect-macros = { workspace = true }
 aspect-runtime = { workspace = true }
 aspect-std = { workspace = true }
+tokio = { version = "1.50.0", features = ["macros", "rt-multi-thread"] }
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+axum-valid = "0.24.0"
+validator = { version = "0.20.0", features = ["derive"] }
+thiserror = "2.0.3"
 
 [[bin]]
 name = "logging"
@@ -52,3 +58,11 @@ path = "src/api_server.rs"
 [[bin]]
 name = "advanced_aspects"
 path = "src/advanced_aspects.rs"
+
+[[bin]]
+name = "async_func"
+path = "src/async_func.rs"
+
+[[bin]]
+name = "axum_site"
+path = "src/axum_site.rs"

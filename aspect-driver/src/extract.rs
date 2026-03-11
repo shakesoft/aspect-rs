@@ -229,10 +229,7 @@ pub fn extract_source_location() -> SourceLocation {
 /// let matches = filter_by_pointcut(&functions, "execution(pub fn *(..))");
 /// // Returns only public functions
 /// ```
-pub fn filter_by_pointcut(
-    functions: &[FunctionMetadata],
-    pointcut: &str,
-) -> Vec<FunctionMetadata> {
+pub fn filter_by_pointcut(functions: &[FunctionMetadata], pointcut: &str) -> Vec<FunctionMetadata> {
     // Simplified matching - full version would use pointcut parser
     functions
         .iter()

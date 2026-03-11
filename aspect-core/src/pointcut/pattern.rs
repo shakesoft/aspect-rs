@@ -115,9 +115,7 @@ pub struct ModulePattern {
 impl ModulePattern {
     /// Create a new module pattern.
     pub fn new(path: impl Into<String>) -> Self {
-        Self {
-            path: path.into(),
-        }
+        Self { path: path.into() }
     }
 
     /// Check if a module path matches this pattern.

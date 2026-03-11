@@ -5,44 +5,6 @@
 //! This crate provides the fundamental traits and types for building and using
 //! aspects in Rust. Aspects help modularize cross-cutting concerns like logging,
 //! performance monitoring, caching, security, and more.
-//!
-//! ## Core Concepts
-//!
-//! - **Aspect**: A module that encapsulates a cross-cutting concern
-//! - **JoinPoint**: A point in program execution where an aspect can be applied
-//! - **Advice**: The action taken by an aspect at a joinpoint
-//!
-//! ## Example
-//!
-//! ```rust
-//! use aspect_core::prelude::*;
-//! use std::any::Any;
-//!
-//! // Define an aspect
-//! #[derive(Default)]
-//! struct Logger;
-//!
-//! impl Aspect for Logger {
-//!     fn before(&self, ctx: &JoinPoint) {
-//!         println!("[ENTRY] {}", ctx.function_name);
-//!     }
-//!
-//!     fn after(&self, ctx: &JoinPoint, _result: &dyn Any) {
-//!         println!("[EXIT] {}", ctx.function_name);
-//!     }
-//! }
-//! ```
-//!
-//! ## Advice Types
-//!
-//! - **before**: Runs before the target function
-//! - **after**: Runs after successful execution
-//! - **after_error**: Runs when an error occurs
-//! - **around**: Wraps the entire function execution
-//!
-//! ## Thread Safety
-//!
-//! All aspects must implement `Send + Sync` to be used across thread boundaries.
 
 #![deny(missing_docs)]
 
@@ -52,15 +14,19 @@ pub mod joinpoint;
 pub mod pointcut;
 
 // Re-export core types
-pub use aspect::Aspect;
+pub use aspect::{Aspect, AsyncAspect};
 pub use error::AspectError;
-pub use joinpoint::{JoinPoint, Location, ProceedingJoinPoint};
+pub use joinpoint::{
+    AsyncJoinPoint, AsyncProceedingJoinPoint, JoinPoint, Location, ProceedingJoinPoint,
+};
 
 /// Prelude module for convenient imports
 pub mod prelude {
-    pub use crate::aspect::Aspect;
-    pub use crate::joinpoint::{JoinPoint, Location, ProceedingJoinPoint};
+    pub use crate::aspect::{Aspect, AsyncAspect};
     pub use crate::error::AspectError;
+    pub use crate::joinpoint::{
+        AsyncJoinPoint, AsyncProceedingJoinPoint, JoinPoint, Location, ProceedingJoinPoint,
+    };
 }
 
 #[cfg(test)]
@@ -108,6 +74,7 @@ mod tests {
                 file: "test.rs",
                 line: 42,
             },
+            args: vec![],
         };
 
         aspect.before(&ctx);
@@ -128,6 +95,7 @@ mod tests {
                 file: "src/lib.rs",
                 line: 100,
             },
+            args: vec![],
         };
 
         assert_eq!(jp.function_name, "my_function");

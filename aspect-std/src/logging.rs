@@ -100,7 +100,10 @@ impl Aspect for LoggingAspect {
         let mut message = format!("[EXIT] {}", ctx.function_name);
 
         if self.log_result {
-            message.push_str(&format!(" (result: {:?})", std::any::type_name_of_val(result)));
+            message.push_str(&format!(
+                " (result: {:?})",
+                std::any::type_name_of_val(result)
+            ));
         }
 
         self.log(self.level, &message);
@@ -146,6 +149,7 @@ mod tests {
                 file: "test.rs",
                 line: 42,
             },
+            args: vec![],
         };
 
         // Should not panic

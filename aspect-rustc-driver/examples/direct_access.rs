@@ -13,7 +13,7 @@ use rustc_session::config::{self, Input};
 use rustc_span::edition::Edition;
 use std::path::PathBuf;
 
-use aspect_driver::mir_analyzer::{MirAnalyzer, AnalysisStats};
+use aspect_driver::mir_analyzer::{AnalysisStats, MirAnalyzer};
 
 fn main() {
     println!("=== Direct TyCtxt Access Experiment ===");

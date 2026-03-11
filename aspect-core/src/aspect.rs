@@ -4,201 +4,119 @@
 //! in aspect-oriented programming.
 
 use crate::error::AspectError;
-use crate::joinpoint::{JoinPoint, ProceedingJoinPoint};
+use crate::joinpoint::{AsyncJoinPoint, AsyncProceedingJoinPoint, JoinPoint, ProceedingJoinPoint};
 use std::any::Any;
+use std::future::Future;
 
-/// The core trait for defining aspects.
-///
-/// An aspect encapsulates cross-cutting concerns that can be applied to multiple
-/// joinpoints in your program. Implement this trait to define custom aspects.
-///
-/// # Thread Safety
-///
-/// Aspects must be `Send + Sync` to be used across thread boundaries. This ensures
-/// that aspects can be safely shared between threads.
-///
-/// # Advice Methods
-///
-/// - **`before`**: Executed before the target function runs
-/// - **`after`**: Executed after successful completion
-/// - **`after_error`**: Executed when an error occurs
-/// - **`around`**: Wraps the entire execution, allowing you to control when/if
-///   the target function runs
-///
-/// # Example
-///
-/// ```rust
-/// use aspect_core::prelude::*;
-/// use std::any::Any;
-///
-/// #[derive(Default)]
-/// struct LoggingAspect;
-///
-/// impl Aspect for LoggingAspect {
-///     fn before(&self, ctx: &JoinPoint) {
-///         println!("[LOG] Entering function: {}", ctx.function_name);
-///     }
-///
-///     fn after(&self, ctx: &JoinPoint, _result: &dyn Any) {
-///         println!("[LOG] Exiting function: {}", ctx.function_name);
-///     }
-///
-///     fn after_error(&self, ctx: &JoinPoint, error: &AspectError) {
-///         eprintln!("[ERROR] Function {} failed: {:?}", ctx.function_name, error);
-///     }
-/// }
-/// ```
+/// The core trait for defining synchronous aspects.
 pub trait Aspect: Send + Sync {
     /// Advice executed before the target function runs.
-    ///
-    /// # Parameters
-    ///
-    /// - `ctx`: Context information about the joinpoint
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use aspect_core::prelude::*;
-    /// # struct MyAspect;
-    /// # impl Aspect for MyAspect {
-    /// fn before(&self, ctx: &JoinPoint) {
-    ///     println!("About to call: {}", ctx.function_name);
-    /// }
-    /// # }
-    /// ```
     fn before(&self, _ctx: &JoinPoint) {}
 
     /// Advice executed after the target function completes successfully.
-    ///
-    /// # Parameters
-    ///
-    /// - `ctx`: Context information about the joinpoint
-    /// - `result`: The return value of the function (as `&dyn Any`)
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use aspect_core::prelude::*;
-    /// # use std::any::Any;
-    /// # struct MyAspect;
-    /// # impl Aspect for MyAspect {
-    /// fn after(&self, ctx: &JoinPoint, result: &dyn Any) {
-    ///     println!("Function {} completed", ctx.function_name);
-    ///     // You can downcast result to access the actual value
-    ///     if let Some(value) = result.downcast_ref::<i32>() {
-    ///         println!("Returned value: {}", value);
-    ///     }
-    /// }
-    /// # }
-    /// ```
     fn after(&self, _ctx: &JoinPoint, _result: &dyn Any) {}
 
     /// Advice executed when the target function encounters an error.
-    ///
-    /// # Parameters
-    ///
-    /// - `ctx`: Context information about the joinpoint
-    /// - `error`: The error that occurred
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use aspect_core::prelude::*;
-    /// # struct MyAspect;
-    /// # impl Aspect for MyAspect {
-    /// fn after_error(&self, ctx: &JoinPoint, error: &AspectError) {
-    ///     eprintln!("Error in {}: {:?}", ctx.function_name, error);
-    ///     // Log to monitoring system, send alerts, etc.
-    /// }
-    /// # }
-    /// ```
     fn after_error(&self, _ctx: &JoinPoint, _error: &AspectError) {}
 
     /// Advice that wraps the entire target function execution.
-    ///
-    /// This is the most powerful advice type, allowing you to:
-    /// - Control whether the target function runs
-    /// - Modify the execution flow
-    /// - Implement retry logic, caching, etc.
-    ///
-    /// The default implementation simply proceeds with the original function.
-    ///
-    /// # Parameters
-    ///
-    /// - `pjp`: A proceeding joinpoint that can be used to execute the target function
-    ///
-    /// # Returns
-    ///
-    /// The result of the function execution (or a modified result)
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use aspect_core::prelude::*;
-    /// # use std::any::Any;
-    /// # struct CachingAspect;
-    /// # impl Aspect for CachingAspect {
-    /// fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
-    ///     let function_name = pjp.context().function_name;
-    ///     println!("Before: {}", function_name);
-    ///
-    ///     // Execute the function
-    ///     let result = pjp.proceed();
-    ///
-    ///     println!("After: {}", function_name);
-    ///     result
-    /// }
-    /// # }
-    /// ```
     fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
-        // Default implementation: call before, proceed, then after/after_error
-        let ctx = pjp.context().clone();
+        self.before(pjp.context());
+        pjp.proceed()
+    }
+}
 
-        self.before(&ctx);
+/// The core trait for defining asynchronous aspects.
+pub trait AsyncAspect: Send + Sync {
+    /// Async advice executed before the target function runs.
+    fn before(&self, _ctx: &AsyncJoinPoint) -> impl Future<Output = ()> + Send {
+        async {}
+    }
 
-        let result = pjp.proceed();
+    /// Async advice executed after the target function completes successfully.
+    fn after(
+        &self,
+        _ctx: &AsyncJoinPoint,
+        _result: &(dyn Any + Send + Sync),
+    ) -> impl Future<Output = ()> + Send {
+        async {}
+    }
 
-        match &result {
-            Ok(value) => {
-                self.after(&ctx, value.as_ref());
-            }
-            Err(error) => {
-                self.after_error(&ctx, error);
-            }
+    /// Async advice executed when the target function encounters an error.
+    fn after_error(
+        &self,
+        _ctx: &AsyncJoinPoint,
+        _error: &AspectError,
+    ) -> impl Future<Output = ()> + Send {
+        async {}
+    }
+
+    /// Async advice that wraps the entire target function execution.
+    fn around(
+        &self,
+        pjp: AsyncProceedingJoinPoint<'_>,
+    ) -> impl Future<Output = Result<Box<dyn Any + Send + Sync>, AspectError>> + Send {
+        async move {
+            self.before(pjp.context()).await;
+            pjp.proceed().await
         }
-
-        result
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::joinpoint::Location;
+    use std::sync::{Arc, Mutex};
 
-    #[derive(Default)]
-    struct CountingAspect {
-        before_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-        after_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    #[derive(Clone)]
+    struct TestAspect {
+        called: Arc<Mutex<Vec<String>>>,
     }
 
-    impl Aspect for CountingAspect {
-        fn before(&self, _ctx: &JoinPoint) {
-            self.before_count
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    impl Default for TestAspect {
+        fn default() -> Self {
+            Self {
+                called: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    impl Aspect for TestAspect {
+        fn before(&self, ctx: &JoinPoint) {
+            self.called
+                .lock()
+                .unwrap()
+                .push(format!("before:{}", ctx.function_name));
         }
 
-        fn after(&self, _ctx: &JoinPoint, _result: &dyn Any) {
-            self.after_count
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        fn after(&self, ctx: &JoinPoint, _result: &dyn Any) {
+            self.called
+                .lock()
+                .unwrap()
+                .push(format!("after:{}", ctx.function_name));
         }
     }
 
     #[test]
-    fn test_aspect_is_send_sync() {
-        fn assert_send<T: Send>() {}
-        fn assert_sync<T: Sync>() {}
+    fn test_aspect_trait() {
+        let aspect = TestAspect::default();
+        let ctx = JoinPoint {
+            function_name: "test_function",
+            module_path: "test::module",
+            location: Location {
+                file: "test.rs",
+                line: 42,
+            },
+            args: vec![],
+        };
 
-        assert_send::<CountingAspect>();
-        assert_sync::<CountingAspect>();
+        aspect.before(&ctx);
+        aspect.after(&ctx, &42);
+
+        let calls = aspect.called.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0], "before:test_function");
+        assert_eq!(calls[1], "after:test_function");
     }
 }

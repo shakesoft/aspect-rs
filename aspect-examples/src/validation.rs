@@ -184,7 +184,10 @@ impl Aspect for ConstraintValidator {
     }
 
     fn after(&self, ctx: &JoinPoint, _result: &dyn Any) {
-        println!("[VALIDATOR] ✓ All constraints satisfied for {}", ctx.function_name);
+        println!(
+            "[VALIDATOR] ✓ All constraints satisfied for {}",
+            ctx.function_name
+        );
     }
 
     fn after_error(&self, ctx: &JoinPoint, error: &AspectError) {
@@ -198,10 +201,10 @@ impl Aspect for ConstraintValidator {
 // Example functions with validation
 
 #[aspect(ConstraintValidator)]
-fn create_user(username: &str, email: &str, age: i32) -> Result<u64, String> {
+fn create_user(username: String, email: String, age: i32) -> Result<u64, String> {
     // Validate inputs
-    validate_username(username)?;
-    validate_email(email)?;
+    validate_username(&username)?;
+    validate_email(&email)?;
     validate_age(age)?;
 
     println!(
@@ -214,7 +217,7 @@ fn create_user(username: &str, email: &str, age: i32) -> Result<u64, String> {
 }
 
 #[aspect(ConstraintValidator)]
-fn update_profile(user_id: u64, bio: &str) -> Result<(), String> {
+fn update_profile(user_id: u64, bio: String) -> Result<(), String> {
     // Validate bio length
     if bio.len() > 500 {
         return Err(format!("Bio too long: {} chars (max 500)", bio.len()));
@@ -238,35 +241,35 @@ fn main() {
 
     // Example 1: Valid user creation
     println!("1. Creating user with valid data:");
-    match create_user("alice_123", "alice@example.com", 25) {
+    match create_user("alice_123".to_string(), "alice@example.com".to_string(), 25) {
         Ok(user_id) => println!("   ✓ User created with ID: {}\n", user_id),
         Err(e) => println!("   ✗ Failed: {}\n", e),
     }
 
     // Example 2: Invalid username (too short)
     println!("2. Creating user with invalid username (too short):");
-    match create_user("ab", "bob@example.com", 30) {
+    match create_user("ab".to_string(), "bob@example.com".to_string(), 30) {
         Ok(user_id) => println!("   ✗ Unexpected success: {}\n", user_id),
         Err(e) => println!("   ✓ Validation failed as expected: {}\n", e),
     }
 
     // Example 3: Invalid email
     println!("3. Creating user with invalid email:");
-    match create_user("charlie", "not-an-email", 28) {
+    match create_user("charlie".to_string(), "not-an-email".to_string(), 28) {
         Ok(user_id) => println!("   ✗ Unexpected success: {}\n", user_id),
         Err(e) => println!("   ✓ Validation failed as expected: {}\n", e),
     }
 
     // Example 4: Invalid age
     println!("4. Creating user with invalid age:");
-    match create_user("dave", "dave@example.com", 200) {
+    match create_user("dave".to_string(), "dave@example.com".to_string(), 200) {
         Ok(user_id) => println!("   ✗ Unexpected success: {}\n", user_id),
         Err(e) => println!("   ✓ Validation failed as expected: {}\n", e),
     }
 
     // Example 5: Valid profile update
     println!("5. Updating profile with valid bio:");
-    match update_profile(123, "Software developer and Rust enthusiast") {
+    match update_profile(123, "Software developer and Rust enthusiast".to_string()) {
         Ok(_) => println!("   ✓ Profile updated\n"),
         Err(e) => println!("   ✗ Failed: {}\n", e),
     }
@@ -274,7 +277,7 @@ fn main() {
     // Example 6: Bio too long
     println!("6. Updating profile with bio too long:");
     let long_bio = "a".repeat(600);
-    match update_profile(123, &long_bio) {
+    match update_profile(123, long_bio) {
         Ok(_) => println!("   ✗ Unexpected success\n"),
         Err(e) => println!("   ✓ Validation failed as expected: {}\n", e),
     }

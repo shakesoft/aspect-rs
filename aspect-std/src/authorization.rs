@@ -104,11 +104,15 @@ impl AuthorizationAspect {
         let authorized = match self.mode {
             AuthMode::RequireAll => {
                 // User must have ALL required roles
-                self.required_roles.iter().all(|r| current_roles.contains(r))
+                self.required_roles
+                    .iter()
+                    .all(|r| current_roles.contains(r))
             }
             AuthMode::RequireAny => {
                 // User must have ANY of the required roles
-                self.required_roles.iter().any(|r| current_roles.contains(r))
+                self.required_roles
+                    .iter()
+                    .any(|r| current_roles.contains(r))
             }
         };
 

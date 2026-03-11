@@ -1,10 +1,36 @@
 //! Code generation utilities for aspect weaving.
 
 use proc_macro2::TokenStream;
-use quote::quote;
-use syn::{Expr, ItemFn, ReturnType};
+use quote::{format_ident, quote};
+use syn::{Expr, ItemFn, Pat, ReturnType, Type};
 
 use crate::parsing::AspectInfo;
+
+fn generate_sync_args(param_names: &[&Box<syn::Pat>]) -> TokenStream {
+    quote! { vec![#(Box::new(#param_names.clone()) as Box<dyn Any>),*] }
+}
+
+fn generate_async_arg_captures(debug_arg_idents: &[syn::Ident]) -> (Vec<syn::Ident>, TokenStream) {
+    let capture_idents: Vec<_> = debug_arg_idents
+        .iter()
+        .enumerate()
+        .map(|(idx, _)| format_ident!("__aspect_arg_{idx}"))
+        .collect();
+
+    let captures = quote! {
+        #(let #capture_idents = #debug_arg_idents.clone();)*
+    };
+
+    (capture_idents, captures)
+}
+
+fn generate_async_args(capture_idents: &[syn::Ident]) -> TokenStream {
+    quote! { vec![#(Box::new(#capture_idents.clone()) as Box<dyn Any>),*] }
+}
+
+fn generate_async_send_args(capture_idents: &[syn::Ident]) -> TokenStream {
+    quote! { vec![#(Box::new(#capture_idents.clone()) as Box<dyn Any + Send + Sync>),*] }
+}
 
 /// Generates the aspect-woven code for a function.
 pub fn generate_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) -> TokenStream {
@@ -19,18 +45,13 @@ pub fn generate_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) -> Token
 
     let aspect_expr = &aspect_info.aspect_expr;
 
-    // Generate the original function with a mangled name
-    let original_fn_name = syn::Ident::new(
-        &format!("__aspect_original_{}", fn_name),
-        fn_name.span(),
-    );
+    let original_fn_name =
+        syn::Ident::new(&format!("__aspect_original_{}", fn_name), fn_name.span());
 
     let mut original_fn_renamed = original_fn.clone();
     original_fn_renamed.sig.ident = original_fn_name.clone();
-    // Make the original function private
     original_fn_renamed.vis = syn::Visibility::Inherited;
 
-    // Extract parameter names for calling the original function
     let param_names: Vec<_> = func
         .sig
         .inputs
@@ -44,25 +65,34 @@ pub fn generate_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) -> Token
         })
         .collect();
 
-    // Determine the return type and if it's a Result
+    let mut debug_arg_idents: Vec<syn::Ident> = Vec::new();
+    for arg in &func.sig.inputs {
+        if let syn::FnArg::Typed(pat_type) = arg {
+            collect_pat_idents(&pat_type.pat, &mut debug_arg_idents);
+        }
+    }
+
     let (return_type, is_result) = match fn_output {
         ReturnType::Default => (quote! { () }, false),
         ReturnType::Type(_, ty) => (quote! { #ty }, is_result_type(ty)),
     };
+    let returns_impl_trait = match fn_output {
+        ReturnType::Type(_, ty) => matches!(ty.as_ref(), Type::ImplTrait(_)),
+        ReturnType::Default => false,
+    };
 
-    // Generate aspect weaving code using around advice
     let aspect_call = if fn_asyncness.is_some() {
-        // Async function handling
         generate_async_around_call(
             aspect_expr,
             &original_fn_name,
             fn_name,
             &param_names,
+            &debug_arg_idents,
             &return_type,
             is_result,
+            returns_impl_trait,
         )
     } else {
-        // Sync function handling
         generate_sync_around_call(
             aspect_expr,
             &original_fn_name,
@@ -74,26 +104,24 @@ pub fn generate_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) -> Token
     };
 
     quote! {
-        // Keep the original function with mangled name
         #original_fn_renamed
 
-        // Generate the wrapper function
         #fn_vis #fn_asyncness fn #fn_name #fn_generics(#fn_inputs) #fn_output #fn_where_clause {
             #aspect_call
         }
     }
 }
-
 /// Generates aspect weaving code for synchronous functions using around advice.
 fn generate_sync_around_call(
     aspect_expr: &Expr,
     original_fn_name: &syn::Ident,
     fn_name: &syn::Ident,
     param_names: &[&Box<syn::Pat>],
-    return_type: &TokenStream,
+    _return_type: &TokenStream,
     is_result: bool,
 ) -> TokenStream {
     let fn_name_str = fn_name.to_string();
+    let args_expr = generate_sync_args(param_names);
 
     if is_result {
         // For Result types, unwrap and propagate errors properly
@@ -102,6 +130,8 @@ fn generate_sync_around_call(
             use ::std::any::Any;
 
             let __aspect = #aspect_expr;
+            // Create ProceedingJoinPoint that wraps the original function
+            let __args = #args_expr;
             let __context = JoinPoint {
                 function_name: #fn_name_str,
                 module_path: module_path!(),
@@ -109,9 +139,8 @@ fn generate_sync_around_call(
                     file: file!(),
                     line: line!(),
                 },
+                args: __args,
             };
-
-            // Create ProceedingJoinPoint that wraps the original function
             let __pjp = ProceedingJoinPoint::new(
                 || {
                     match #original_fn_name(#(#param_names),*) {
@@ -144,6 +173,8 @@ fn generate_sync_around_call(
             use ::std::any::Any;
 
             let __aspect = #aspect_expr;
+            // Create ProceedingJoinPoint that wraps the original function
+            let __args = #args_expr;
             let __context = JoinPoint {
                 function_name: #fn_name_str,
                 module_path: module_path!(),
@@ -151,9 +182,8 @@ fn generate_sync_around_call(
                     file: file!(),
                     line: line!(),
                 },
+                args: __args,
             };
-
-            // Create ProceedingJoinPoint that wraps the original function
             let __pjp = ProceedingJoinPoint::new(
                 || {
                     let __result = #original_fn_name(#(#param_names),*);
@@ -167,7 +197,7 @@ fn generate_sync_around_call(
                 Ok(__boxed_result) => {
                     // Downcast the result back to the original type
                     *__boxed_result
-                        .downcast::<#return_type>()
+                        .downcast::<_>()
                         .expect("aspect around() returned wrong type")
                 }
                 Err(__err) => {
@@ -184,70 +214,232 @@ fn generate_async_around_call(
     original_fn_name: &syn::Ident,
     fn_name: &syn::Ident,
     param_names: &[&Box<syn::Pat>],
+    debug_arg_idents: &[syn::Ident],
     _return_type: &TokenStream,
     is_result: bool,
+    returns_impl_trait: bool,
 ) -> TokenStream {
     let fn_name_str = fn_name.to_string();
+    let (capture_idents, capture_bindings) = generate_async_arg_captures(debug_arg_idents);
+    let args_expr = generate_async_args(&capture_idents);
 
-    // For async functions, for now we'll use a simpler approach
-    // True async around advice requires async traits (not stable)
     if is_result {
+        quote! {
+            use ::aspect_core::prelude::*;
+            use ::std::any::Any;
+            use ::std::future::Future;
+            use ::std::pin::Pin;
+
+            type __AspectAsyncFuture = Pin<Box<dyn Future<Output = Result<Box<dyn Any>, AspectError>> + Send + 'static>>;
+
+            let __aspect = #aspect_expr;
+            #capture_bindings
+
+            let __future: __AspectAsyncFuture = {
+                let __context = JoinPoint {
+                    function_name: #fn_name_str,
+                    module_path: module_path!(),
+                    location: Location {
+                        file: file!(),
+                        line: ::core::line!(),
+                    },
+                    args: #args_expr,
+                };
+
+                let __pjp = ProceedingJoinPoint::new(
+                    move || {
+                        let __future: __AspectAsyncFuture = Box::pin(async move {
+                            match #original_fn_name(#(#param_names),*).await {
+                                Ok(__val) => Ok(Box::new(__val) as Box<dyn Any>),
+                                Err(__err) => Err(AspectError::execution(format!("{:?}", __err))),
+                            }
+                        });
+                        Ok(Box::new(__future) as Box<dyn Any>)
+                    },
+                    __context,
+                );
+
+                match __aspect.around(__pjp) {
+                    Ok(__boxed_future) => *__boxed_future
+                        .downcast::<__AspectAsyncFuture>()
+                        .expect("aspect around() returned wrong async future type"),
+                    Err(__err) => {
+                        let __context = JoinPoint {
+                            function_name: #fn_name_str,
+                            module_path: module_path!(),
+                            location: Location {
+                                file: file!(),
+                                line: ::core::line!(),
+                            },
+                            args: #args_expr,
+                        };
+                        __aspect.after_error(&__context, &__err);
+                        return Err(format!("{:?}", __err).into());
+                    }
+                }
+            };
+
+            match __future.await {
+                Ok(__boxed_result) => {
+                    let __context = JoinPoint {
+                        function_name: #fn_name_str,
+                        module_path: module_path!(),
+                        location: Location {
+                            file: file!(),
+                            line: ::core::line!(),
+                        },
+                        args: #args_expr,
+                    };
+                    let __result = *__boxed_result
+                        .downcast::<_>()
+                        .expect("aspect around() returned wrong type");
+                    __aspect.after(&__context, &__result as &dyn Any);
+                    Ok(__result)
+                }
+                Err(__err) => {
+                    let __context = JoinPoint {
+                        function_name: #fn_name_str,
+                        module_path: module_path!(),
+                        location: Location {
+                            file: file!(),
+                            line: ::core::line!(),
+                        },
+                        args: #args_expr,
+                    };
+                    __aspect.after_error(&__context, &__err);
+                    Err(format!("{:?}", __err).into())
+                }
+            }
+        }
+    } else if returns_impl_trait {
         quote! {
             use ::aspect_core::prelude::*;
             use ::std::any::Any;
 
             let __aspect = #aspect_expr;
-            let __context = JoinPoint {
-                function_name: #fn_name_str,
-                module_path: module_path!(),
-                location: Location {
-                    file: file!(),
-                    line: line!(),
-                },
-            };
+            #capture_bindings
 
-            __aspect.before(&__context);
+            {
+                let __before_context = JoinPoint {
+                    function_name: #fn_name_str,
+                    module_path: module_path!(),
+                    location: Location {
+                        file: file!(),
+                        line: ::core::line!(),
+                    },
+                    args: #args_expr,
+                };
+                __aspect.before(&__before_context);
+            }
 
             let __result = #original_fn_name(#(#param_names),*).await;
 
-            match &__result {
-                Ok(__val) => {
-                    __aspect.after(&__context, __val as &dyn Any);
-                }
-                Err(__err) => {
-                    let __aspect_err = AspectError::execution(format!("{:?}", __err));
-                    __aspect.after_error(&__context, &__aspect_err);
-                }
+            {
+                let __after_context = JoinPoint {
+                    function_name: #fn_name_str,
+                    module_path: module_path!(),
+                    location: Location {
+                        file: file!(),
+                        line: ::core::line!(),
+                    },
+                    args: #args_expr,
+                };
+                __aspect.after(&__after_context, &__result as &dyn Any);
             }
-
             __result
         }
     } else {
         quote! {
             use ::aspect_core::prelude::*;
             use ::std::any::Any;
+            use ::std::future::Future;
+            use ::std::pin::Pin;
+
+            type __AspectAsyncFuture = Pin<Box<dyn Future<Output = Result<Box<dyn Any>, AspectError>> + Send + 'static>>;
+
+            fn __aspect_take_result<T: 'static>(boxed: Box<dyn Any>) -> T {
+                *boxed
+                    .downcast::<T>()
+                    .expect("aspect around() returned wrong type")
+            }
 
             let __aspect = #aspect_expr;
-            let __context = JoinPoint {
-                function_name: #fn_name_str,
-                module_path: module_path!(),
-                location: Location {
-                    file: file!(),
-                    line: line!(),
-                },
+            #capture_bindings
+
+            let __future: __AspectAsyncFuture = {
+                let __context = JoinPoint {
+                    function_name: #fn_name_str,
+                    module_path: module_path!(),
+                    location: Location {
+                        file: file!(),
+                        line: ::core::line!(),
+                    },
+                    args: #args_expr,
+                };
+
+                let __pjp = ProceedingJoinPoint::new(
+                    move || {
+                        let __future: __AspectAsyncFuture = Box::pin(async move {
+                            let __result = #original_fn_name(#(#param_names),*).await;
+                            Ok(Box::new(__result) as Box<dyn Any>)
+                        });
+                        Ok(Box::new(__future) as Box<dyn Any>)
+                    },
+                    __context,
+                );
+
+                match __aspect.around(__pjp) {
+                    Ok(__boxed_future) => *__boxed_future
+                        .downcast::<__AspectAsyncFuture>()
+                        .expect("aspect around() returned wrong async future type"),
+                    Err(__err) => {
+                        let __context = JoinPoint {
+                            function_name: #fn_name_str,
+                            module_path: module_path!(),
+                            location: Location {
+                                file: file!(),
+                                line: ::core::line!(),
+                            },
+                            args: #args_expr,
+                        };
+                        __aspect.after_error(&__context, &__err);
+                        panic!("aspect around() failed: {:?}", __err);
+                    }
+                }
             };
 
-            __aspect.before(&__context);
-
-            let __result = #original_fn_name(#(#param_names),*).await;
-
-            __aspect.after(&__context, &__result as &dyn Any);
-
-            __result
+            match __future.await {
+                Ok(__boxed_result) => {
+                    let __context = JoinPoint {
+                        function_name: #fn_name_str,
+                        module_path: module_path!(),
+                        location: Location {
+                            file: file!(),
+                            line: ::core::line!(),
+                        },
+                        args: #args_expr,
+                    };
+                    let __result = __aspect_take_result(__boxed_result);
+                    __aspect.after(&__context, &__result as &dyn Any);
+                    __result
+                }
+                Err(__err) => {
+                    let __context = JoinPoint {
+                        function_name: #fn_name_str,
+                        module_path: module_path!(),
+                        location: Location {
+                            file: file!(),
+                            line: ::core::line!(),
+                        },
+                        args: #args_expr,
+                    };
+                    __aspect.after_error(&__context, &__err);
+                    panic!("aspect around() failed: {:?}", __err);
+                }
+            }
         }
     }
 }
-
 /// Checks if a type is a Result type.
 fn is_result_type(ty: &syn::Type) -> bool {
     if let syn::Type::Path(type_path) = ty {
@@ -256,6 +448,292 @@ fn is_result_type(ty: &syn::Type) -> bool {
         }
     }
     false
+}
+
+/// Recursively collects identifier names from patterns.
+fn collect_pat_idents(pat: &Pat, out: &mut Vec<syn::Ident>) {
+    match pat {
+        Pat::Ident(pat_ident) => out.push(pat_ident.ident.clone()),
+        Pat::Reference(p) => collect_pat_idents(&p.pat, out),
+        Pat::Type(p) => collect_pat_idents(&p.pat, out),
+        Pat::Tuple(p) => {
+            for elem in &p.elems {
+                collect_pat_idents(elem, out);
+            }
+        }
+        Pat::TupleStruct(p) => {
+            for elem in &p.elems {
+                collect_pat_idents(elem, out);
+            }
+        }
+        Pat::Struct(p) => {
+            for field in &p.fields {
+                collect_pat_idents(&field.pat, out);
+            }
+        }
+        Pat::Slice(p) => {
+            for elem in &p.elems {
+                collect_pat_idents(elem, out);
+            }
+        }
+        Pat::Paren(p) => collect_pat_idents(&p.pat, out),
+        Pat::Or(p) => {
+            if let Some(first) = p.cases.first() {
+                collect_pat_idents(first, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Generates the async-aspect wrapper code for an async function.
+pub fn generate_async_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) -> TokenStream {
+    let original_fn = func;
+    let fn_name = &func.sig.ident;
+    let fn_vis = &func.vis;
+    let fn_inputs = &func.sig.inputs;
+    let fn_output = &func.sig.output;
+    let fn_generics = &func.sig.generics;
+    let fn_where_clause = &func.sig.generics.where_clause;
+
+    let aspect_expr = &aspect_info.aspect_expr;
+
+    let original_fn_name = syn::Ident::new(
+        &format!("__async_aspect_original_{}", fn_name),
+        fn_name.span(),
+    );
+
+    let mut original_fn_renamed = original_fn.clone();
+    original_fn_renamed.sig.ident = original_fn_name.clone();
+    original_fn_renamed.vis = syn::Visibility::Inherited;
+
+    let param_names: Vec<_> = func
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|arg| {
+            if let syn::FnArg::Typed(pat_type) = arg {
+                Some(&pat_type.pat)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let mut debug_arg_idents: Vec<syn::Ident> = Vec::new();
+    for arg in &func.sig.inputs {
+        if let syn::FnArg::Typed(pat_type) = arg {
+            collect_pat_idents(&pat_type.pat, &mut debug_arg_idents);
+        }
+    }
+
+    let (return_type, is_result) = match fn_output {
+        ReturnType::Default => (quote! { () }, false),
+        ReturnType::Type(_, ty) => (quote! { #ty }, is_result_type(ty)),
+    };
+    let returns_impl_trait = match fn_output {
+        ReturnType::Type(_, ty) => matches!(ty.as_ref(), Type::ImplTrait(_)),
+        ReturnType::Default => false,
+    };
+
+    let aspect_call = generate_async_aspect_call(
+        aspect_expr,
+        &original_fn_name,
+        fn_name,
+        &param_names,
+        &debug_arg_idents,
+        &return_type,
+        is_result,
+        returns_impl_trait,
+    );
+
+    quote! {
+        #original_fn_renamed
+
+        #fn_vis async fn #fn_name #fn_generics(#fn_inputs) #fn_output #fn_where_clause {
+            #aspect_call
+        }
+    }
+}
+
+fn generate_async_aspect_call(
+    aspect_expr: &Expr,
+    original_fn_name: &syn::Ident,
+    fn_name: &syn::Ident,
+    param_names: &[&Box<syn::Pat>],
+    debug_arg_idents: &[syn::Ident],
+    _return_type: &TokenStream,
+    is_result: bool,
+    returns_impl_trait: bool,
+) -> TokenStream {
+    let fn_name_str = fn_name.to_string();
+    let (capture_idents, capture_bindings) = generate_async_arg_captures(debug_arg_idents);
+    let args_expr = generate_async_send_args(&capture_idents);
+
+    if is_result {
+        quote! {
+            use ::aspect_core::prelude::*;
+            use ::std::any::Any;
+
+            let __aspect = #aspect_expr;
+            #capture_bindings
+
+            let __context = AsyncJoinPoint {
+                function_name: #fn_name_str,
+                module_path: module_path!(),
+                location: Location {
+                    file: file!(),
+                    line: ::core::line!(),
+                },
+                args: #args_expr,
+            };
+
+            let __pjp = AsyncProceedingJoinPoint::new(
+                move || {
+                    Box::pin(async move {
+                        match #original_fn_name(#(#param_names),*).await {
+                            Ok(__val) => Ok(Box::new(__val) as Box<dyn Any + Send + Sync>),
+                            Err(__err) => Err(AspectError::execution(format!("{:?}", __err))),
+                        }
+                    })
+                },
+                __context,
+            );
+
+            match __aspect.around(__pjp).await {
+                Ok(__boxed_result) => {
+                    let __context = AsyncJoinPoint {
+                        function_name: #fn_name_str,
+                        module_path: module_path!(),
+                        location: Location {
+                            file: file!(),
+                            line: ::core::line!(),
+                        },
+                        args: #args_expr,
+                    };
+                    let __result = *__boxed_result
+                        .downcast::<_>()
+                        .expect("async aspect around() returned wrong type");
+                    __aspect.after(&__context, &__result as &(dyn Any + Send + Sync)).await;
+                    Ok(__result)
+                }
+                Err(__err) => {
+                    let __context = AsyncJoinPoint {
+                        function_name: #fn_name_str,
+                        module_path: module_path!(),
+                        location: Location {
+                            file: file!(),
+                            line: ::core::line!(),
+                        },
+                        args: #args_expr,
+                    };
+                    __aspect.after_error(&__context, &__err).await;
+                    Err(format!("{:?}", __err).into())
+                }
+            }
+        }
+    } else if returns_impl_trait {
+        quote! {
+            use ::aspect_core::prelude::*;
+            use ::std::any::Any;
+
+            let __aspect = #aspect_expr;
+            #capture_bindings
+
+            {
+                let __before_context = AsyncJoinPoint {
+                    function_name: #fn_name_str,
+                    module_path: module_path!(),
+                    location: Location {
+                        file: file!(),
+                        line: ::core::line!(),
+                    },
+                    args: #args_expr,
+                };
+                __aspect.before(&__before_context).await;
+            }
+
+            let __result = #original_fn_name(#(#param_names),*).await;
+
+            {
+                let __after_context = AsyncJoinPoint {
+                    function_name: #fn_name_str,
+                    module_path: module_path!(),
+                    location: Location {
+                        file: file!(),
+                        line: ::core::line!(),
+                    },
+                    args: #args_expr,
+                };
+                __aspect.after(&__after_context, &__result as &(dyn Any + Send + Sync)).await;
+            }
+            __result
+        }
+    } else {
+        quote! {
+            use ::aspect_core::prelude::*;
+            use ::std::any::Any;
+
+            fn __async_aspect_take_result<T: 'static + Send>(boxed: Box<dyn Any + Send + Sync>) -> T {
+                *boxed
+                    .downcast::<T>()
+                    .expect("async aspect around() returned wrong type")
+            }
+
+            let __aspect = #aspect_expr;
+            #capture_bindings
+
+            let __context = AsyncJoinPoint {
+                function_name: #fn_name_str,
+                module_path: module_path!(),
+                location: Location {
+                    file: file!(),
+                    line: ::core::line!(),
+                },
+                args: #args_expr,
+            };
+
+            let __pjp = AsyncProceedingJoinPoint::new(
+                move || {
+                    Box::pin(async move {
+                        let __result = #original_fn_name(#(#param_names),*).await;
+                        Ok(Box::new(__result) as Box<dyn Any + Send + Sync>)
+                    })
+                },
+                __context,
+            );
+
+            match __aspect.around(__pjp).await {
+                Ok(__boxed_result) => {
+                    let __context = AsyncJoinPoint {
+                        function_name: #fn_name_str,
+                        module_path: module_path!(),
+                        location: Location {
+                            file: file!(),
+                            line: ::core::line!(),
+                        },
+                        args: #args_expr,
+                    };
+                    let __result = __async_aspect_take_result(__boxed_result);
+                    __aspect.after(&__context, &__result as &(dyn Any + Send + Sync)).await;
+                    __result
+                }
+                Err(__err) => {
+                    let __context = AsyncJoinPoint {
+                        function_name: #fn_name_str,
+                        module_path: module_path!(),
+                        location: Location {
+                            file: file!(),
+                            line: ::core::line!(),
+                        },
+                        args: #args_expr,
+                    };
+                    __aspect.after_error(&__context, &__err).await;
+                    panic!("async aspect around() failed: {:?}", __err);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -270,5 +748,48 @@ mod tests {
 
         let non_result_type: syn::Type = parse_quote!(i32);
         assert!(!is_result_type(&non_result_type));
+    }
+
+    #[test]
+    fn test_collect_pat_idents_tuple_struct() {
+        let pat: Pat = parse_quote!(Query(params));
+        let mut out = Vec::new();
+        collect_pat_idents(&pat, &mut out);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], "params");
+    }
+
+    #[test]
+    fn test_generate_async_args_uses_cloned_original_values() {
+        let args = vec![syn::Ident::new("a", proc_macro2::Span::call_site())];
+        let tokens = generate_async_args(&args).to_string();
+
+        assert!(tokens.contains("Box :: new (a . clone ()) as Box < dyn Any >"));
+    }
+
+    #[test]
+    fn test_generate_async_wrapper_uses_around() {
+        let func: ItemFn = parse_quote! {
+            async fn demo(a: i32) -> i32 { a + 1 }
+        };
+        let aspect_info = AspectInfo::parse(parse_quote!(Logger)).unwrap();
+        let tokens = generate_aspect_wrapper(&aspect_info, &func).to_string();
+
+        assert!(tokens.contains("ProceedingJoinPoint :: new"));
+        assert!(tokens.contains("__aspect . around (__pjp)"));
+        assert!(tokens.contains("downcast :: < __AspectAsyncFuture >"));
+    }
+
+    #[test]
+    fn test_generate_async_aspect_wrapper_uses_async_joinpoint() {
+        let func: ItemFn = parse_quote! {
+            async fn demo(a: i32) -> i32 { a + 1 }
+        };
+        let aspect_info = AspectInfo::parse(parse_quote!(Logger)).unwrap();
+        let tokens = generate_async_aspect_wrapper(&aspect_info, &func).to_string();
+
+        assert!(tokens.contains("AsyncProceedingJoinPoint :: new"));
+        assert!(tokens.contains("__aspect . around (__pjp) . await"));
+        assert!(tokens.contains("Box < dyn Any + Send + Sync >"));
     }
 }
