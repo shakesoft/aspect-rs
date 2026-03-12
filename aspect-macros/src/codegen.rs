@@ -493,6 +493,25 @@ fn is_result_type(ty: &syn::Type) -> bool {
     false
 }
 
+fn is_impl_into_response(ty: &syn::Type) -> bool {
+    let syn::Type::ImplTrait(impl_trait) = ty else {
+        return false;
+    };
+
+    impl_trait.bounds.iter().any(|bound| {
+        let syn::TypeParamBound::Trait(trait_bound) = bound else {
+            return false;
+        };
+
+        trait_bound
+            .path
+            .segments
+            .last()
+            .map(|segment| segment.ident == "IntoResponse")
+            .unwrap_or(false)
+    })
+}
+
 /// Recursively collects identifier names from patterns.
 fn collect_pat_idents(pat: &Pat, out: &mut Vec<syn::Ident>) {
     match pat {
@@ -578,6 +597,10 @@ pub fn generate_async_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) ->
         ReturnType::Type(_, ty) => matches!(ty.as_ref(), Type::ImplTrait(_)),
         ReturnType::Default => false,
     };
+    let returns_impl_into_response = match fn_output {
+        ReturnType::Type(_, ty) => is_impl_into_response(ty.as_ref()),
+        ReturnType::Default => false,
+    };
 
     let aspect_call = generate_async_aspect_call(
         aspect_expr,
@@ -588,6 +611,7 @@ pub fn generate_async_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) ->
         &return_type,
         is_result,
         returns_impl_trait,
+        returns_impl_into_response,
     );
 
     quote! {
@@ -608,6 +632,7 @@ fn generate_async_aspect_call(
     _return_type: &TokenStream,
     is_result: bool,
     returns_impl_trait: bool,
+    returns_impl_into_response: bool,
 ) -> TokenStream {
     let fn_name_str = fn_name.to_string();
     let (capture_idents, capture_bindings) = generate_async_arg_captures(debug_arg_idents);
@@ -651,6 +676,46 @@ fn generate_async_aspect_call(
                     Ok(__result)
                 }
                 Err(__err) => Err(format!("{:?}", __err).into())
+            }
+        }
+    } else if returns_impl_into_response {
+        quote! {
+            use ::aspect_core::prelude::*;
+            use ::axum::response::{IntoResponse, Response};
+            use ::std::any::Any;
+            use ::std::sync::Mutex;
+
+            let __aspect = #aspect_expr;
+            #capture_bindings
+
+            let __context = AsyncJoinPoint {
+                function_name: #fn_name_str,
+                module_path: module_path!(),
+                location: Location {
+                    file: file!(),
+                    line: ::core::line!(),
+                },
+                args: #args_expr,
+            };
+
+            let __pjp = AsyncProceedingJoinPoint::new(
+                move || {
+                    Box::pin(async move {
+                        let __result: Response = #original_fn_name(#(#param_names),*).await.into_response();
+                        Ok(Box::new(Mutex::new(Some(__result))) as Box<dyn Any + Send + Sync>)
+                    })
+                },
+                __context,
+            );
+
+            match __aspect.around(__pjp).await {
+                Ok(__boxed_result) => __boxed_result
+                    .downcast::<Mutex<Option<Response>>>()
+                    .expect("async aspect around() returned wrong type")
+                    .into_inner()
+                    .expect("async aspect response mutex poisoned")
+                    .expect("async aspect response missing"),
+                Err(__err) => panic!("async aspect around() failed: {:?}", __err)
             }
         }
     } else if returns_impl_trait {
@@ -735,6 +800,15 @@ mod tests {
     }
 
     #[test]
+    fn test_is_impl_into_response() {
+        let impl_into_response: syn::Type = parse_quote!(impl IntoResponse);
+        assert!(is_impl_into_response(&impl_into_response));
+
+        let impl_debug: syn::Type = parse_quote!(impl core::fmt::Debug);
+        assert!(!is_impl_into_response(&impl_debug));
+    }
+
+    #[test]
     fn test_collect_pat_idents_tuple_struct() {
         let pat: Pat = parse_quote!(Query(params));
         let mut out = Vec::new();
@@ -778,6 +852,19 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_async_aspect_wrapper_uses_around_for_impl_trait() {
+        let func: ItemFn = parse_quote! {
+            async fn demo(a: i32) -> impl IntoResponse { a + 1 }
+        };
+        let aspect_info = AspectInfo::parse(parse_quote!(Logger)).unwrap();
+        let tokens = generate_async_aspect_wrapper(&aspect_info, &func).to_string();
+
+        assert!(tokens.contains("AsyncProceedingJoinPoint :: new"));
+        assert!(tokens.contains("__aspect . around (__pjp) . await"));
+        assert!(!tokens.contains("__aspect . before (& __before_context) . await"));
+    }
+
+    #[test]
     fn test_generate_async_wrapper_uses_custom_sync_around_when_requested() {
         let func: ItemFn = parse_quote! {
             async fn demo(a: i32) -> i32 { a + 1 }
@@ -808,7 +895,7 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_async_aspect_wrapper_uses_around_for_impl_trait() {
+    fn test_generate_async_aspect_wrapper_keeps_lifecycle_for_non_response_impl_trait() {
         let func: ItemFn = parse_quote! {
             async fn demo(a: i32) -> impl core::fmt::Debug { a + 1 }
         };
