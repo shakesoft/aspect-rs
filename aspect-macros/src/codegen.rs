@@ -674,7 +674,22 @@ fn generate_async_aspect_call(
                 __aspect.before(&__before_context).await;
             }
 
-            #original_fn_name(#(#param_names),*).await
+            let __result = #original_fn_name(#(#param_names),*).await;
+
+            {
+                let __after_context = AsyncJoinPoint {
+                    function_name: #fn_name_str,
+                    module_path: module_path!(),
+                    location: Location {
+                        file: file!(),
+                        line: ::core::line!(),
+                    },
+                    args: #args_expr,
+                };
+                __aspect.after(&__after_context, &__result as &(dyn Any + Send + Sync)).await;
+            }
+
+            __result
         }
     } else {
         quote! {
@@ -804,7 +819,7 @@ mod tests {
 
         assert_eq!(sync_tokens.matches("__aspect . after (").count(), 1);
         assert_eq!(sync_tokens.matches("__aspect . after_error (").count(), 0);
-        assert_eq!(async_tokens.matches("__aspect . after (").count(), 0);
+        assert_eq!(async_tokens.matches("__aspect . after (").count(), 1);
         assert_eq!(async_tokens.matches("__aspect . after_error (").count(), 0);
     }
 }

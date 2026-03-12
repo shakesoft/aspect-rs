@@ -6,18 +6,17 @@ use axum::{async_trait, extract::Query, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use axum::extract::State;
+use axum::routing::post;
 use thiserror::Error;
 use tokio::time::Instant;
 
 #[derive(Debug, Deserialize, Clone)]
 struct HelloRequest {
     pub page_no: u64,
-    pub page_size: u64,
-    pub mobile: Option<String>,    //手机
-    pub user_name: Option<String>, //姓名
-    #[serde(default = "default_status")]
-    pub status: Option<i8>, //状态(1:正常，0:禁用)
-    pub dept_id: Option<i64>,      //部门ID
+    pub mobile: Option<String>,
+    pub user_name: Option<String>,
 }
 
 fn default_status() -> Option<i8> {
@@ -38,39 +37,53 @@ fn build_hello_response(name: String, age: u64) -> HelloResponse {
     }
 }
 
+#[derive(Debug)]
+pub struct AppState {
+    pub batis: String,
+    pub redis: String,
+}
+
 #[aspect(Logger1)]
-async fn hello(Query(params): Query<HelloRequest>) -> impl IntoResponse {
+pub async fn hello(State(state): State<Arc<AppState>>, Json(item): Json<HelloRequest>) -> impl IntoResponse  {
     let res = add(1, 2).await;
     println!("add result: {res}");
     let result = build_hello_response(
-        params.user_name.clone().unwrap_or("Guest".to_string()),
-        params.page_no,
+        item.user_name.clone().unwrap_or("Guest".to_string()),
+        item.page_no,
     );
     test(1, 2);
     ok_result_data(result)
 }
 
-#[aspect(Logger)]
+// #[aspect(Logger)]
 fn test(num1:i32, num2:i32) {
     println!("=== Logging Aspect Example ===");
 }
 
 
-#[aspect(Logger1)]
-#[aspect(Logger2)]
+// #[aspect(Logger1)]
+// #[aspect(Logger2)]
 async fn add(num1: i32, num2: i32) -> i32 {
     sub(num1, num2).await
 }
 
-#[aspect(Logger2)]
-#[aspect(Logger1)]
+// #[aspect(Logger2)]
+// #[aspect(Logger1)]
 async fn sub(num1: i32, num2: i32) -> i32 {
     num1 + num2
 }
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new().route("/hello", get(hello));
+    run_server().await;
+}
+
+#[aspect(Logger1)]
+async fn run_server() {
+
+    let shared_state = Arc::new(AppState { batis: "1111".to_string(), redis: "2222".to_owned() });
+
+    let app = Router::new().route("/hello", post(hello)).with_state(shared_state);
 
     let addr: SocketAddr = "127.0.0.1:3000".parse().expect("invalid bind address");
     let listener = tokio::net::TcpListener::bind(addr)
