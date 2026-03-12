@@ -44,7 +44,7 @@ pub struct AppState {
 }
 
 #[aspect(Logger1)]
-pub async fn hello(State(state): State<Arc<AppState>>, Json(item): Json<HelloRequest>) -> impl IntoResponse  {
+pub async fn hello(State(state): State<Arc<AppState>>, Query(item): Query<HelloRequest>) -> impl IntoResponse  {
     let res = add(1, 2).await;
     println!("add result: {res}");
     let result = build_hello_response(
@@ -55,20 +55,20 @@ pub async fn hello(State(state): State<Arc<AppState>>, Json(item): Json<HelloReq
     ok_result_data(result)
 }
 
-// #[aspect(Logger)]
+#[aspect(Logger)]
 fn test(num1:i32, num2:i32) {
     println!("=== Logging Aspect Example ===");
 }
 
 
-// #[aspect(Logger1)]
-// #[aspect(Logger2)]
+#[aspect(Logger1)]
+#[aspect(Logger2)]
 async fn add(num1: i32, num2: i32) -> i32 {
     sub(num1, num2).await
 }
 
-// #[aspect(Logger2)]
-// #[aspect(Logger1)]
+#[aspect(Logger2)]
+#[aspect(Logger1)]
 async fn sub(num1: i32, num2: i32) -> i32 {
     num1 + num2
 }
@@ -83,7 +83,7 @@ async fn run_server() {
 
     let shared_state = Arc::new(AppState { batis: "1111".to_string(), redis: "2222".to_owned() });
 
-    let app = Router::new().route("/hello", post(hello)).with_state(shared_state);
+    let app = Router::new().route("/hello", get(hello)).with_state(shared_state);
 
     let addr: SocketAddr = "127.0.0.1:3000".parse().expect("invalid bind address");
     let listener = tokio::net::TcpListener::bind(addr)
