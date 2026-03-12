@@ -12,27 +12,41 @@ use crate::parsing::AspectInfo;
 pub fn transform(aspect_expr: Expr, func: ItemFn) -> Result<TokenStream> {
     let mut aspect_info = AspectInfo::parse(aspect_expr)?;
     let type_name = extract_aspect_type_name(&aspect_info.aspect_expr);
+    let is_async_aspect = type_name
+        .as_deref()
+        .map(is_async_aspect_type)
+        .unwrap_or(false);
+
+    validate_aspect_usage(&func, &aspect_info.aspect_expr, is_async_aspect)?;
+
     if let Some(type_name) = type_name.as_deref() {
         aspect_info.has_custom_sync_around = has_custom_sync_around(type_name);
     }
 
-    if func.sig.asyncness.is_some() && is_async_aspect_expr(&aspect_info.aspect_expr) {
+    if func.sig.asyncness.is_some() && is_async_aspect {
         Ok(generate_async_aspect_wrapper(&aspect_info, &func))
     } else {
         Ok(generate_aspect_wrapper(&aspect_info, &func))
     }
 }
 
-fn is_async_aspect_expr(expr: &Expr) -> bool {
-    let Some(type_name) = extract_aspect_type_name(expr) else {
-        return false;
-    };
+fn validate_aspect_usage(func: &ItemFn, aspect_expr: &Expr, is_async_aspect: bool) -> Result<()> {
+    if func.sig.asyncness.is_none() && is_async_aspect {
+        return Err(syn::Error::new_spanned(
+            aspect_expr,
+            "async aspects can only be applied to async fn; sync fn must use a type that implements Aspect",
+        ));
+    }
 
+    Ok(())
+}
+
+fn is_async_aspect_type(type_name: &str) -> bool {
     let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") else {
         return false;
     };
 
-    contains_async_impl_recursively(Path::new(&manifest_dir), &type_name)
+    contains_async_impl_recursively(Path::new(&manifest_dir), type_name)
 }
 
 fn has_custom_sync_around(type_name: &str) -> bool {
@@ -186,6 +200,7 @@ fn impl_targets_trait(item_impl: &syn::ItemImpl, trait_name: &str, type_name: &s
 #[cfg(test)]
 mod tests {
     use super::*;
+    use syn::parse_quote;
 
     #[test]
     fn detects_custom_sync_around_even_with_other_methods() {
@@ -215,5 +230,18 @@ mod tests {
         "#;
 
         assert!(file_contains_async_impl(source, "Logger1"));
+    }
+
+    #[test]
+    fn rejects_async_aspect_on_sync_function() {
+        let func: ItemFn = parse_quote! {
+            fn demo() {}
+        };
+
+        let err = validate_aspect_usage(&func, &parse_quote!(Logger1), true).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("async aspects can only be applied to async fn")
+        );
     }
 }

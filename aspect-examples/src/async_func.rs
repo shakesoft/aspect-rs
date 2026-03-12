@@ -12,6 +12,12 @@ async fn main() {
     println!("Result of add: {}\n", result);
     let result = sub(10, 4).await;
     println!("Result of sub: {}\n", result);
+
+    test(1,3);
+}
+#[aspect(Logger)]
+fn test(num1:i32, num2:i32) {
+    println!("=== Logging Aspect Example ===\n");
 }
 
 #[aspect(Logger)]

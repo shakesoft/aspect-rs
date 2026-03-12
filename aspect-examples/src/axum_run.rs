@@ -46,8 +46,15 @@ async fn hello(Query(params): Query<HelloRequest>) -> impl IntoResponse {
         params.user_name.clone().unwrap_or("Guest".to_string()),
         params.page_no,
     );
+    test(1, 2);
     ok_result_data(result)
 }
+
+#[aspect(Logger)]
+fn test(num1:i32, num2:i32) {
+    println!("=== Logging Aspect Example ===\n");
+}
+
 
 #[aspect(Logger)]
 async fn add(num1: i32, num2: i32) -> i32 {
