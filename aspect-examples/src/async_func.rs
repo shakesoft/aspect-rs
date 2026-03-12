@@ -20,7 +20,6 @@ fn test(num1:i32, num2:i32) ->Result<(), AspectError> {
     Err(AspectError::WeavingError { message: "".to_string() })
 }
 
-#[aspect(Logger)]
 #[aspect(Logger1)]
 async fn add(a: i32, b: i32) -> i32 {
     println!("  [APP] Adding {} + {}", a, b);
@@ -28,13 +27,6 @@ async fn add(a: i32, b: i32) -> i32 {
 }
 
 #[aspect(Logger1)]
-#[aspect(Logger)]
-#[aspect(Logger1)]
-#[aspect(Logger)]
-#[aspect(Logger1)]
-#[aspect(Logger)]
-#[aspect(Logger1)]
-#[aspect(Logger)]
 async fn sub(a: i32, b: i32) -> i32 {
     println!("  [APP] Subtracting {} - {}", a, b);
     a - b
@@ -87,12 +79,12 @@ impl Aspect for Logger {
         println!("Error");
     }
 
-    // fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
-    //     println!("around before");
-    //     let result = pjp.proceed()?;
-    //     println!("around after");
-    //     Ok(result)
-    // }
+    fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
+        println!("around before");
+        let result = pjp.proceed()?;
+        println!("around after");
+        Ok(result)
+    }
 }
 
 
@@ -142,12 +134,9 @@ impl AsyncAspect for Logger1 {
 
     // async fn around(&self, pjp: AsyncProceedingJoinPoint<'_>) -> Result<Box<dyn Any + Send + Sync>, AspectError> {
     //     println!("around before");
-    //     self.before(pjp.context()).await;
-    //     self.after(pjp.context(), &"around result".to_string()).await;
     //     let result = ((pjp.proceed().await?));
     //     println!("around after");
     //     Ok(result)
-    //
     // }
 
 }

@@ -656,7 +656,6 @@ fn generate_async_aspect_call(
     } else if returns_impl_trait {
         quote! {
             use ::aspect_core::prelude::*;
-            use ::std::any::Any;
 
             let __aspect = #aspect_expr;
             #capture_bindings
@@ -674,22 +673,7 @@ fn generate_async_aspect_call(
                 __aspect.before(&__before_context).await;
             }
 
-            let __result = #original_fn_name(#(#param_names),*).await;
-
-            {
-                let __after_context = AsyncJoinPoint {
-                    function_name: #fn_name_str,
-                    module_path: module_path!(),
-                    location: Location {
-                        file: file!(),
-                        line: ::core::line!(),
-                    },
-                    args: #args_expr,
-                };
-                __aspect.after(&__after_context, &__result as &(dyn Any + Send + Sync)).await;
-            }
-
-            __result
+            #original_fn_name(#(#param_names),*).await
         }
     } else {
         quote! {
@@ -819,7 +803,20 @@ mod tests {
 
         assert_eq!(sync_tokens.matches("__aspect . after (").count(), 1);
         assert_eq!(sync_tokens.matches("__aspect . after_error (").count(), 0);
-        assert_eq!(async_tokens.matches("__aspect . after (").count(), 1);
+        assert_eq!(async_tokens.matches("__aspect . after (").count(), 0);
         assert_eq!(async_tokens.matches("__aspect . after_error (").count(), 0);
+    }
+
+    #[test]
+    fn test_generate_async_aspect_wrapper_uses_around_for_impl_trait() {
+        let func: ItemFn = parse_quote! {
+            async fn demo(a: i32) -> impl core::fmt::Debug { a + 1 }
+        };
+        let aspect_info = AspectInfo::parse(parse_quote!(Logger)).unwrap();
+        let tokens = generate_async_aspect_wrapper(&aspect_info, &func).to_string();
+
+        assert!(!tokens.contains("AsyncProceedingJoinPoint :: new"));
+        assert!(tokens.contains("__aspect . before (& __before_context) . await"));
+        assert!(!tokens.contains("__aspect . around (__pjp) . await"));
     }
 }
