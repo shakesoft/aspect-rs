@@ -6,27 +6,35 @@ use aspect_std::{LoggingAspect, TimingAspect};
 
 #[tokio::main]
 async fn main() {
-    println!("=== Timing Aspect Example ===\n");
-
     let result = add(5, 3).await;
     println!("Result of add: {}\n", result);
     let result = sub(10, 4).await;
     println!("Result of sub: {}\n", result);
 
-    test(1,3);
-}
-#[aspect(Logger)]
-fn test(num1:i32, num2:i32) {
-    println!("=== Logging Aspect Example ===\n");
+    test(1, 3);
 }
 
 #[aspect(Logger)]
+fn test(num1:i32, num2:i32) ->Result<(), AspectError> {
+    println!("=== Logging Aspect Example ===");
+    Err(AspectError::WeavingError { message: "".to_string() })
+}
+
+#[aspect(Logger)]
+#[aspect(Logger1)]
 async fn add(a: i32, b: i32) -> i32 {
     println!("  [APP] Adding {} + {}", a, b);
     a + b
 }
 
 #[aspect(Logger1)]
+#[aspect(Logger)]
+#[aspect(Logger1)]
+#[aspect(Logger)]
+#[aspect(Logger1)]
+#[aspect(Logger)]
+#[aspect(Logger1)]
+#[aspect(Logger)]
 async fn sub(a: i32, b: i32) -> i32 {
     println!("  [APP] Subtracting {} - {}", a, b);
     a - b
@@ -73,6 +81,10 @@ impl Aspect for Logger {
             "alter {}: {},{},{},[{}]",
             _ctx.function_name, _ctx.module_path, _ctx.location.file, _ctx.location.line, args
         );
+    }
+
+    fn after_error(&self, _ctx: &JoinPoint, _error: &AspectError) {
+        println!("Error");
     }
 
     // fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {

@@ -1,4 +1,4 @@
-use aspect_core::{Aspect, AspectError, AsyncAspect, AsyncJoinPoint, JoinPoint, ProceedingJoinPoint};
+use aspect_core::{Aspect, AspectError, AsyncAspect, AsyncJoinPoint, AsyncProceedingJoinPoint, JoinPoint, ProceedingJoinPoint};
 use aspect_macros::aspect;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -52,16 +52,18 @@ async fn hello(Query(params): Query<HelloRequest>) -> impl IntoResponse {
 
 #[aspect(Logger)]
 fn test(num1:i32, num2:i32) {
-    println!("=== Logging Aspect Example ===\n");
+    println!("=== Logging Aspect Example ===");
 }
 
 
-#[aspect(Logger)]
+#[aspect(Logger1)]
+#[aspect(Logger2)]
 async fn add(num1: i32, num2: i32) -> i32 {
     sub(num1, num2).await
 }
 
 #[aspect(Logger2)]
+#[aspect(Logger1)]
 async fn sub(num1: i32, num2: i32) -> i32 {
     num1 + num2
 }
@@ -83,7 +85,6 @@ async fn main() {
 
 #[derive(Default)]
 pub struct Logger;
-
 impl Aspect for Logger {
     fn before(&self, ctx: &JoinPoint) {
         let num1 = ctx
@@ -122,19 +123,34 @@ pub struct Logger1;
 
 impl AsyncAspect for Logger1 {
     async fn before(&self, ctx: &AsyncJoinPoint) {
-        let arg1 = ctx.args.get(0).unwrap().downcast_ref::<HelloRequest>();
-        println!("before {}", arg1.unwrap().mobile.as_ref().unwrap());
+        let args = ctx
+            .args
+            .iter()
+            .map(|arg| {
+                if let Some(v) = arg.downcast_ref::<i32>() {
+                    format!("{:?}", v)
+                } else {
+                    format!("{:?}", "<non-debug-arg>")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        println!(
+            "before {}: {},{},{},[{}]",
+            ctx.function_name, ctx.module_path, ctx.location.file, ctx.location.line, args
+        );
     }
 }
 
 #[derive(Default)]
 pub struct Logger2;
 
-impl Aspect for Logger2 {
-    fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
+impl AsyncAspect for Logger2 {
+    async fn around(&self, pjp: AsyncProceedingJoinPoint<'_>) -> Result<Box<dyn Any + Send + Sync>, AspectError>  {
         let start = Instant::now();
         let function_name = pjp.context().function_name;
-        let result = pjp.proceed();
+        let result = pjp.proceed().await;
         let elapsed = start.elapsed();
         println!("{} took {:?}", function_name, elapsed);
         match &result {
