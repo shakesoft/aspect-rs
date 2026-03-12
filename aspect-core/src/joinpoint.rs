@@ -150,6 +150,16 @@ impl<'a> ProceedingJoinPoint<'a> {
         (self.inner)()
     }
 
+    /// Splits the proceeding joinpoint into its context and executable closure.
+    pub fn into_parts(
+        self,
+    ) -> (
+        JoinPoint,
+        Box<dyn FnOnce() -> Result<Box<dyn Any>, AspectError> + 'a>,
+    ) {
+        (self.context, self.inner)
+    }
+
     /// Returns a reference to the joinpoint context.
     pub fn context(&self) -> &JoinPoint {
         &self.context
@@ -195,6 +205,20 @@ impl<'a> AsyncProceedingJoinPoint<'a> {
     /// Proceeds with the original async function execution.
     pub async fn proceed(self) -> Result<Box<dyn Any + Send + Sync>, AspectError> {
         (self.inner)().await
+    }
+
+    /// Splits the async proceeding joinpoint into its context and executable closure.
+    pub fn into_parts(
+        self,
+    ) -> (
+        AsyncJoinPoint,
+        Box<
+            dyn FnOnce() -> BoxFuture<'a, Result<Box<dyn Any + Send + Sync>, AspectError>>
+                + Send
+                + 'a,
+        >,
+    ) {
+        (self.context, self.inner)
     }
 
     /// Returns a reference to the joinpoint context.

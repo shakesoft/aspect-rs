@@ -3,14 +3,19 @@
 use proc_macro2::TokenStream;
 use std::fs;
 use std::path::{Path, PathBuf};
-use syn::{Expr, ItemFn, Result};
+use syn::{Expr, ImplItem, Item, ItemFn, Result, Type};
 
 use crate::codegen::{generate_aspect_wrapper, generate_async_aspect_wrapper};
 use crate::parsing::AspectInfo;
 
 /// Transforms a function by applying aspect weaving.
 pub fn transform(aspect_expr: Expr, func: ItemFn) -> Result<TokenStream> {
-    let aspect_info = AspectInfo::parse(aspect_expr)?;
+    let mut aspect_info = AspectInfo::parse(aspect_expr)?;
+    let type_name = extract_aspect_type_name(&aspect_info.aspect_expr);
+    if let Some(type_name) = type_name.as_deref() {
+        aspect_info.has_custom_sync_around = has_custom_sync_around(type_name);
+    }
+
     if func.sig.asyncness.is_some() && is_async_aspect_expr(&aspect_info.aspect_expr) {
         Ok(generate_async_aspect_wrapper(&aspect_info, &func))
     } else {
@@ -28,6 +33,14 @@ fn is_async_aspect_expr(expr: &Expr) -> bool {
     };
 
     contains_async_impl_recursively(Path::new(&manifest_dir), &type_name)
+}
+
+fn has_custom_sync_around(type_name: &str) -> bool {
+    let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") else {
+        return false;
+    };
+
+    contains_custom_sync_around_recursively(Path::new(&manifest_dir), type_name)
 }
 
 fn extract_aspect_type_name(expr: &Expr) -> Option<String> {
@@ -68,7 +81,7 @@ fn contains_async_impl_recursively(root: &Path, type_name: &str) -> bool {
             continue;
         };
 
-        if contains_async_impl(&contents, type_name) {
+        if file_contains_async_impl(&contents, type_name) {
             return true;
         }
     }
@@ -76,20 +89,131 @@ fn contains_async_impl_recursively(root: &Path, type_name: &str) -> bool {
     false
 }
 
-fn contains_async_impl(contents: &str, type_name: &str) -> bool {
-    let needle = format!("impl AsyncAspect for {}", type_name);
-    let mut remainder = contents;
+fn contains_custom_sync_around_recursively(root: &Path, type_name: &str) -> bool {
+    let mut stack = vec![PathBuf::from(root)];
 
-    while let Some(index) = remainder.find(&needle) {
-        let suffix = &remainder[index + needle.len()..];
-        match suffix.chars().next() {
-            None => return true,
-            Some(ch) if !matches!(ch, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_') => return true,
-            _ => {
-                remainder = suffix;
+    while let Some(path) = stack.pop() {
+        let Ok(metadata) = fs::metadata(&path) else {
+            continue;
+        };
+
+        if metadata.is_dir() {
+            let Ok(entries) = fs::read_dir(&path) else {
+                continue;
+            };
+
+            for entry in entries.flatten() {
+                stack.push(entry.path());
             }
+            continue;
+        }
+
+        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+            continue;
+        }
+
+        let Ok(contents) = fs::read_to_string(&path) else {
+            continue;
+        };
+
+        if file_contains_custom_sync_around(&contents, type_name) {
+            return true;
         }
     }
 
     false
+}
+
+fn file_contains_async_impl(contents: &str, type_name: &str) -> bool {
+    let Ok(file) = syn::parse_file(contents) else {
+        return false;
+    };
+
+    file.items.iter().any(|item| {
+        let Item::Impl(item_impl) = item else {
+            return false;
+        };
+
+        impl_targets_trait(item_impl, "AsyncAspect", type_name)
+    })
+}
+
+fn file_contains_custom_sync_around(contents: &str, type_name: &str) -> bool {
+    let Ok(file) = syn::parse_file(contents) else {
+        return false;
+    };
+
+    file.items.iter().any(|item| {
+        let Item::Impl(item_impl) = item else {
+            return false;
+        };
+
+        impl_targets_trait(item_impl, "Aspect", type_name)
+            && item_impl.items.iter().any(|impl_item| {
+                matches!(
+                    impl_item,
+                    ImplItem::Fn(method) if method.sig.ident == "around"
+                )
+            })
+    })
+}
+
+fn impl_targets_trait(item_impl: &syn::ItemImpl, trait_name: &str, type_name: &str) -> bool {
+    let Some((_, trait_path, _)) = &item_impl.trait_ else {
+        return false;
+    };
+
+    let trait_matches = trait_path
+        .segments
+        .last()
+        .map(|segment| segment.ident == trait_name)
+        .unwrap_or(false);
+    if !trait_matches {
+        return false;
+    }
+
+    match item_impl.self_ty.as_ref() {
+        Type::Path(type_path) => type_path
+            .path
+            .segments
+            .last()
+            .map(|segment| segment.ident == type_name)
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_custom_sync_around_even_with_other_methods() {
+        let source = r#"
+            impl Aspect for Logger {
+                fn before(&self, ctx: &JoinPoint) {
+                    if ctx.args.is_empty() {
+                        println!("empty");
+                    }
+                }
+
+                fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
+                    pjp.proceed()
+                }
+            }
+        "#;
+
+        assert!(file_contains_custom_sync_around(source, "Logger"));
+    }
+
+    #[test]
+    fn detects_async_impl_from_ast() {
+        let source = r#"
+            impl AsyncAspect for Logger1 {
+                async fn before(&self, _ctx: &AsyncJoinPoint) {}
+            }
+        "#;
+
+        assert!(file_contains_async_impl(source, "Logger1"));
+    }
 }

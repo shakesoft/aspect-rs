@@ -21,8 +21,18 @@ pub trait Aspect: Send + Sync {
 
     /// Advice that wraps the entire target function execution.
     fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
-        self.before(pjp.context());
-        pjp.proceed()
+        let (ctx, proceed) = pjp.into_parts();
+
+        self.before(&ctx);
+
+        let result = proceed();
+
+        match &result {
+            Ok(value) => self.after(&ctx, value.as_ref()),
+            Err(error) => self.after_error(&ctx, error),
+        }
+
+        result
     }
 }
 
@@ -57,8 +67,18 @@ pub trait AsyncAspect: Send + Sync {
         pjp: AsyncProceedingJoinPoint<'_>,
     ) -> impl Future<Output = Result<Box<dyn Any + Send + Sync>, AspectError>> + Send {
         async move {
-            self.before(pjp.context()).await;
-            pjp.proceed().await
+            let (ctx, proceed) = pjp.into_parts();
+
+            self.before(&ctx).await;
+
+            let result = proceed().await;
+
+            match &result {
+                Ok(value) => self.after(&ctx, value.as_ref()).await,
+                Err(error) => self.after_error(&ctx, error).await,
+            }
+
+            result
         }
     }
 }

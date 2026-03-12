@@ -69,10 +69,12 @@ impl Aspect for Logger {
         );
     }
 
-    fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
-        self.before(pjp.context());
-        pjp.proceed()
-    }
+    // fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
+    //     println!("around before");
+    //     let result = pjp.proceed()?;
+    //     println!("around after");
+    //     Ok(result)
+    // }
 }
 
 
@@ -120,9 +122,14 @@ impl AsyncAspect for Logger1 {
         );
     }
 
-    async fn around(&self, pjp: AsyncProceedingJoinPoint<'_>) -> Result<Box<dyn Any + Send + Sync>, AspectError> {
-        self.before(pjp.context()).await;
-        Ok((pjp.proceed().await?))
-    }
+    // async fn around(&self, pjp: AsyncProceedingJoinPoint<'_>) -> Result<Box<dyn Any + Send + Sync>, AspectError> {
+    //     println!("around before");
+    //     self.before(pjp.context()).await;
+    //     self.after(pjp.context(), &"around result".to_string()).await;
+    //     let result = ((pjp.proceed().await?));
+    //     println!("around after");
+    //     Ok(result)
+    //
+    // }
 
 }

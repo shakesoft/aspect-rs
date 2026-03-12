@@ -6,11 +6,16 @@ use syn::{Expr, Result};
 pub struct AspectInfo {
     /// The expression that evaluates to the aspect instance
     pub aspect_expr: Expr,
+    /// Whether the aspect type explicitly overrides `Aspect::around`.
+    pub has_custom_sync_around: bool,
 }
 
 impl AspectInfo {
     /// Parse aspect information from the attribute syntax.
     pub fn parse(aspect_expr: Expr) -> Result<Self> {
-        Ok(Self { aspect_expr })
+        Ok(Self {
+            aspect_expr,
+            has_custom_sync_around: false,
+        })
     }
 }
