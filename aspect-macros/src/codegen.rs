@@ -314,7 +314,6 @@ fn generate_async_around_call(
     } else if returns_impl_trait {
         quote! {
             use ::aspect_core::prelude::*;
-            use ::std::any::Any;
 
             let __aspect = #aspect_expr;
             #capture_bindings
@@ -653,21 +652,7 @@ fn generate_async_aspect_call(
                 __aspect.before(&__before_context).await;
             }
 
-            let __result = #original_fn_name(#(#param_names),*).await;
-
-            {
-                let __after_context = AsyncJoinPoint {
-                    function_name: #fn_name_str,
-                    module_path: module_path!(),
-                    location: Location {
-                        file: file!(),
-                        line: ::core::line!(),
-                    },
-                    args: #args_expr,
-                };
-                __aspect.after(&__after_context, &__result as &(dyn Any + Send + Sync)).await;
-            }
-            __result
+            #original_fn_name(#(#param_names),*).await
         }
     } else {
         quote! {

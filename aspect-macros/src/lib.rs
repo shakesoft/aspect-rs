@@ -2,8 +2,8 @@
 //!
 //! Procedural macros for aspect-oriented programming in Rust.
 //!
-//! This crate provides the `#[aspect]` and `#[async_aspect]` attribute macros
-//! that enable aspect weaving at compile time.
+//! This crate provides the `#[aspect]` attribute macro that enables aspect
+//! weaving at compile time for both sync and async functions.
 
 use proc_macro::TokenStream;
 use syn::{parse_macro_input, Expr, ItemFn};
@@ -13,7 +13,7 @@ mod aspect_attr;
 mod codegen;
 mod parsing;
 
-/// Applies a synchronous aspect to a function.
+/// Applies an aspect to a function.
 #[proc_macro_attribute]
 pub fn aspect(attr: TokenStream, item: TokenStream) -> TokenStream {
     let aspect_expr = parse_macro_input!(attr as Expr);
@@ -24,16 +24,6 @@ pub fn aspect(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Applies an asynchronous aspect to an async function.
-#[proc_macro_attribute]
-pub fn async_aspect(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let aspect_expr = parse_macro_input!(attr as Expr);
-    let func = parse_macro_input!(item as ItemFn);
-
-    aspect_attr::transform_async(aspect_expr, func)
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
-}
 
 /// Registers an aspect with a pointcut pattern for declarative aspect application.
 #[proc_macro_attribute]

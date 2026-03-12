@@ -1,7 +1,5 @@
-use aspect_core::{
-    Aspect, AspectError, AsyncAspect, AsyncJoinPoint, JoinPoint, ProceedingJoinPoint,
-};
-use aspect_macros::{aspect, async_aspect};
+use aspect_core::{Aspect, AspectError, AsyncAspect, AsyncJoinPoint, JoinPoint, ProceedingJoinPoint};
+use aspect_macros::aspect;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::{async_trait, extract::Query, routing::get, Json, Router};
@@ -48,10 +46,10 @@ async fn hello(Query(params): Query<HelloRequest>) -> impl IntoResponse {
         params.user_name.clone().unwrap_or("Guest".to_string()),
         params.page_no,
     );
-    ok_result_data(result).into_response()
+    ok_result_data(result)
 }
 
-#[async_aspect(Logger)]
+#[aspect(Logger)]
 async fn add(num1: i32, num2: i32) -> i32 {
     sub(num1, num2).await
 }
@@ -79,8 +77,8 @@ async fn main() {
 #[derive(Default)]
 pub struct Logger;
 
-impl AsyncAspect for Logger {
-    async fn before(&self, ctx: &AsyncJoinPoint) {
+impl Aspect for Logger {
+    fn before(&self, ctx: &JoinPoint) {
         let num1 = ctx
             .args
             .get(0)
@@ -95,7 +93,7 @@ impl AsyncAspect for Logger {
         println!("async before add args: num1={num1:?}, num2={num2:?}");
     }
 
-    async fn after(&self, ctx: &AsyncJoinPoint, result: &(dyn Any + Send + Sync)) {
+    fn after(&self, ctx: &JoinPoint, result: &dyn Any) {
         let num1 = ctx
             .args
             .get(0)
@@ -115,15 +113,10 @@ impl AsyncAspect for Logger {
 #[derive(Default)]
 pub struct Logger1;
 
-impl Aspect for Logger1 {
-    fn before(&self, ctx: &JoinPoint) {
+impl AsyncAspect for Logger1 {
+    async fn before(&self, ctx: &AsyncJoinPoint) {
         let arg1 = ctx.args.get(0).unwrap().downcast_ref::<HelloRequest>();
         println!("before {}", arg1.unwrap().mobile.as_ref().unwrap());
-    }
-
-    fn after(&self, _ctx: &JoinPoint, _result: &dyn Any) {
-        let arg1 = _ctx.args.get(0).unwrap().downcast_ref::<HelloRequest>();
-        println!("after{}", arg1.unwrap().mobile.as_ref().unwrap());
     }
 }
 
@@ -147,23 +140,6 @@ impl Aspect for Logger2 {
 
 #[derive(Error, Debug)]
 pub enum AppError {
-    // #[error("Failed to complete an HTTP request")]
-    // Http { #[from] source: reqwest::Error },
-    //
-    #[error("Failed to read the cache file")]
-    DiskCacheRead { source: std::io::Error },
-    //
-    // #[error("Failed to update the cache file")]
-    // DiskCacheWrite { source: std::io::Error },
-    #[error("jwt：{0}")]
-    JwtTokenError(String),
-
-    #[error("业务异常: {0}")]
-    BusinessError(&'static str),
-
-    #[error("验证异常: {0}")]
-    ValidationError(String),
-
     #[error("内部异常: {0}")]
     InternalError(&'static str),
 }
@@ -180,18 +156,6 @@ impl IntoResponse for AppError {
         };
 
         match self {
-            AppError::DiskCacheRead { source: _ } => {
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
-            }
-            AppError::JwtTokenError(_msg) => {
-                (StatusCode::UNAUTHORIZED, Json(response)).into_response()
-            }
-            AppError::BusinessError(_msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
-            }
-            AppError::ValidationError(_msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
-            }
             AppError::InternalError(_msg) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
             }
@@ -199,40 +163,6 @@ impl IntoResponse for AppError {
     }
 }
 
-impl AppError {
-    pub fn default() -> AppError {
-        AppError::InternalError("服务器发生内部异常，请稍后再试")
-    }
-    pub fn interrupt() -> AppResult<Json<BaseResponse<()>>> {
-        Err(AppError::default())
-    }
-
-    pub fn build_validation_error_message(e: &validator::ValidationErrors) -> String {
-        e.field_errors()
-            .iter()
-            .map(|(field, errors)| {
-                let messages: Vec<String> = errors
-                    .iter()
-                    .map(|error| {
-                        if let Some(message) = &error.message {
-                            message.to_string()
-                        } else {
-                            format!("字段 '{}' 验证失败", field)
-                        }
-                    })
-                    .collect();
-                messages.join(", ")
-            })
-            .collect::<Vec<String>>()
-            .join("; ")
-    }
-
-    pub fn validation_error(e: &validator::ValidationErrors) -> AppError {
-        AppError::ValidationError(Self::build_validation_error_message(e))
-    }
-}
-
-// 统一返回vo
 #[derive(Serialize, Debug, Clone)]
 pub struct BaseResponse<T> {
     pub code: i32,
@@ -240,64 +170,10 @@ pub struct BaseResponse<T> {
     pub data: Option<T>,
 }
 
-#[derive(Serialize, Debug, Clone)]
-pub struct EmptyResponse {
-    pub code: i32,
-    pub msg: String,
-    pub data: Option<()>,
-}
-
-#[derive(Serialize, Debug, Clone)]
-pub struct ResponsePage<T> {
-    pub code: i32,
-    pub msg: String,
-    pub total: u64,
-    pub success: bool,
-    pub data: Option<T>,
-}
-
-pub fn ok() -> AppResult<Json<EmptyResponse>> {
-    Ok(Json(EmptyResponse {
-        msg: "操作成功".to_string(),
-        code: 0,
-        data: Some(()),
-    }))
-}
-
-pub fn ok_result() -> AppResult<Json<BaseResponse<String>>> {
-    ok_result_msg("操作成功")
-}
-
-pub fn ok_result_msg(msg: &str) -> AppResult<Json<BaseResponse<String>>> {
-    Ok(Json(BaseResponse {
-        msg: msg.to_string(),
-        code: 0,
-        data: Some("None".to_string()),
-    }))
-}
-
 pub fn ok_result_data<T>(data: T) -> AppResult<Json<BaseResponse<T>>> {
     Ok(Json(BaseResponse {
-        msg: "操作成功".to_string(),
+        msg: "SUCCESS".to_string(),
         code: 0,
         data: Some(data),
-    }))
-}
-
-pub fn ok_result_page<T>(data: T, total: u64) -> AppResult<Json<ResponsePage<T>>> {
-    Ok(Json(ResponsePage {
-        msg: "操作成功".to_string(),
-        code: 0,
-        success: true,
-        data: Some(data),
-        total,
-    }))
-}
-
-pub fn err_result_msg(msg: &str) -> AppResult<Json<BaseResponse<String>>> {
-    Ok(Json(BaseResponse {
-        msg: msg.to_string(),
-        code: 1,
-        data: Some("None".to_string()),
     }))
 }
