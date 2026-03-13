@@ -8,6 +8,8 @@ pub struct AspectInfo {
     pub aspect_expr: Expr,
     /// Whether the aspect type explicitly overrides `Aspect::around`.
     pub has_custom_sync_around: bool,
+    /// Whether the aspect type explicitly overrides `AsyncAspect::around`.
+    pub has_custom_async_around: bool,
 }
 
 impl AspectInfo {
@@ -16,6 +18,7 @@ impl AspectInfo {
         Ok(Self {
             aspect_expr,
             has_custom_sync_around: false,
+            has_custom_async_around: false,
         })
     }
 }

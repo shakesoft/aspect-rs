@@ -44,7 +44,7 @@ pub struct AppState {
     pub redis: String,
 }
 
-// #[aspect(Logger1)]
+#[aspect(Logger1)]
 pub async fn hello(State(state): State<Arc<AppState>>, Query(item): Query<HelloRequest>) -> impl IntoResponse  {
     let res = add(1, 2).await;
     // println!("add result: {res}");
@@ -56,7 +56,7 @@ pub async fn hello(State(state): State<Arc<AppState>>, Query(item): Query<HelloR
     ok_result_data(result)
 }
 
-// #[aspect(Logger)]
+#[aspect(Logger)]
 fn test(num1:i32, num2:i32) {
     println!("=== Logging Aspect Example ===");
 }
@@ -72,8 +72,8 @@ async fn add(num1: i32, num2: i32) -> i32 {
     res
 }
 
-// #[aspect(Logger2)]
-// #[aspect(Logger1)]
+#[aspect(Logger2)]
+#[aspect(Logger1)]
 async fn sub(num1: i32, num2: i32) -> i32 {
     num1 + num2
 }
