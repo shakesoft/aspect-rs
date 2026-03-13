@@ -10,8 +10,7 @@ async fn main() {
     println!("Result of add: {}\n", result);
     let result = sub(10, 4).await;
     println!("Result of sub: {}\n", result);
-
-    test(1, 3);
+    // test(1, 3);
 }
 
 #[aspect(Logger)]
@@ -21,11 +20,13 @@ fn test(num1:i32, num2:i32) ->Result<(), AspectError> {
 }
 
 #[aspect(Logger1)]
+#[aspect(Logger)]
 async fn add(a: i32, b: i32) -> i32 {
     println!("  [APP] Adding {} + {}", a, b);
     a + b
 }
 
+#[aspect(Logger)]
 #[aspect(Logger1)]
 async fn sub(a: i32, b: i32) -> i32 {
     println!("  [APP] Subtracting {} - {}", a, b);
@@ -70,7 +71,7 @@ impl Aspect for Logger {
             .collect::<Vec<_>>()
             .join(", ");
         println!(
-            "alter {}: {},{},{},[{}]",
+            "after {}: {},{},{},[{}]",
             _ctx.function_name, _ctx.module_path, _ctx.location.file, _ctx.location.line, args
         );
     }
@@ -79,12 +80,12 @@ impl Aspect for Logger {
         println!("Error");
     }
 
-    fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
-        println!("around before");
-        let result = pjp.proceed()?;
-        println!("around after");
-        Ok(result)
-    }
+    // fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
+    //     println!("around before");
+    //     let result = pjp.proceed()?;
+    //     println!("around after");
+    //     Ok(result)
+    // }
 }
 
 
@@ -107,7 +108,7 @@ impl AsyncAspect for Logger1 {
             .join(", ");
 
         println!(
-            "before {}: {},{},{},[{}]",
+            "Logger1 async before {}: {},{},{},[{}]",
             ctx.function_name, ctx.module_path, ctx.location.file, ctx.location.line, args
         );
     }
@@ -127,7 +128,7 @@ impl AsyncAspect for Logger1 {
             .join(", ");
 
         println!(
-            "after {}: {},{},{},[{}]",
+            "Logger1 async after {}: {},{},{},[{}]",
             _ctx.function_name, _ctx.module_path, _ctx.location.file, _ctx.location.line, args
         );
     }
