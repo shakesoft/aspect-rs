@@ -7,28 +7,28 @@ use aspect_std::{LoggingAspect, TimingAspect};
 #[tokio::main]
 async fn main() {
     let result = add(5, 3).await;
-    println!("Result of add: {}\n", result);
+    // println!("Result of add: {}\n", result);
     let result = sub(10, 4).await;
-    println!("Result of sub: {}\n", result);
+    // println!("Result of sub: {}\n", result);
     test(1, 3);
 }
 
 #[aspect(Logger)]
+#[aspect(Logger)]
 fn test(num1:i32, num2:i32) ->Result<(), AspectError> {
     println!("=== Logging Aspect Example ===");
-    Err(AspectError::WeavingError { message: "".to_string() })
+    //Err(AspectError::WeavingError { message: "".to_string() })
+    Ok(())
 }
 
 #[aspect(Logger1)]
-#[aspect(Logger)]
 #[aspect(Logger1)]
-#[aspect(Logger)]
 async fn add(a: i32, b: i32) -> i32 {
     println!("  [APP] Adding {} + {}", a, b);
     a + b
 }
 
-#[aspect(Logger)]
+#[aspect(Logger1)]
 #[aspect(Logger1)]
 async fn sub(a: i32, b: i32) -> i32 {
     println!("  [APP] Subtracting {} - {}", a, b);
@@ -39,55 +39,55 @@ async fn sub(a: i32, b: i32) -> i32 {
 pub struct Logger;
 
 impl Aspect for Logger {
-    fn before(&self, ctx: &JoinPoint) {
-        let args = ctx
-            .args
-            .iter()
-            .map(|arg| {
-                if let Some(v) = arg.downcast_ref::<i32>() {
-                    format!("{:?}", v)
-                } else {
-                    format!("{:?}", "<non-debug-arg>")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        println!(
-            "before {}: {},{},{},[{}]",
-            ctx.function_name, ctx.module_path, ctx.location.file, ctx.location.line, args
-        );
-    }
-
-    fn after(&self, _ctx: &JoinPoint, _result: &dyn Any) {
-        let args = _ctx
-            .args
-            .iter()
-            .map(|arg| {
-                if let Some(v) = arg.downcast_ref::<i32>() {
-                    format!("{:?}", v)
-                } else {
-                    format!("{:?}", "<non-debug-arg>")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        println!(
-            "after {}: {},{},{},[{}]",
-            _ctx.function_name, _ctx.module_path, _ctx.location.file, _ctx.location.line, args
-        );
-    }
-
-    fn after_error(&self, _ctx: &JoinPoint, _error: &AspectError) {
-        println!("Error");
-    }
-
-    // fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
-    //     println!("around before");
-    //     let result = pjp.proceed()?;
-    //     println!("around after");
-    //     Ok(result)
+    // fn before(&self, ctx: &JoinPoint) {
+    //     let args = ctx
+    //         .args
+    //         .iter()
+    //         .map(|arg| {
+    //             if let Some(v) = arg.downcast_ref::<i32>() {
+    //                 format!("{:?}", v)
+    //             } else {
+    //                 format!("{:?}", "<non-debug-arg>")
+    //             }
+    //         })
+    //         .collect::<Vec<_>>()
+    //         .join(", ");
+    //
+    //     println!(
+    //         "before {}: {},{},{},[{}]",
+    //         ctx.function_name, ctx.module_path, ctx.location.file, ctx.location.line, args
+    //     );
     // }
+    //
+    // fn after(&self, _ctx: &JoinPoint, _result: &dyn Any) {
+    //     let args = _ctx
+    //         .args
+    //         .iter()
+    //         .map(|arg| {
+    //             if let Some(v) = arg.downcast_ref::<i32>() {
+    //                 format!("{:?}", v)
+    //             } else {
+    //                 format!("{:?}", "<non-debug-arg>")
+    //             }
+    //         })
+    //         .collect::<Vec<_>>()
+    //         .join(", ");
+    //     println!(
+    //         "after {}: {},{},{},[{}]",
+    //         _ctx.function_name, _ctx.module_path, _ctx.location.file, _ctx.location.line, args
+    //     );
+    // }
+    //
+    // fn after_error(&self, _ctx: &JoinPoint, _error: &AspectError) {
+    //     println!("Error");
+    // }
+
+    fn around(&self, pjp: ProceedingJoinPoint) -> Result<Box<dyn Any>, AspectError> {
+        println!("around before");
+        let result = pjp.proceed()?;
+        println!("around after");
+        Ok(result)
+    }
 }
 
 
@@ -135,11 +135,11 @@ impl AsyncAspect for Logger1 {
         );
     }
 
-    // async fn around(&self, pjp: AsyncProceedingJoinPoint<'_>) -> Result<Box<dyn Any + Send + Sync>, AspectError> {
-    //     println!("around before");
-    //     let result = ((pjp.proceed().await?));
-    //     println!("around after");
-    //     Ok(result)
-    // }
+    async fn around(&self, pjp: AsyncProceedingJoinPoint<'_>) -> Result<Box<dyn Any + Send + Sync>, AspectError> {
+        println!("around before");
+        let result = ((pjp.proceed().await?));
+        println!("around after");
+        Ok(result)
+    }
 
 }
