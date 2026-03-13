@@ -10,7 +10,7 @@ async fn main() {
     println!("Result of add: {}\n", result);
     let result = sub(10, 4).await;
     println!("Result of sub: {}\n", result);
-    // test(1, 3);
+    test(1, 3);
 }
 
 #[aspect(Logger)]
@@ -19,6 +19,8 @@ fn test(num1:i32, num2:i32) ->Result<(), AspectError> {
     Err(AspectError::WeavingError { message: "".to_string() })
 }
 
+#[aspect(Logger1)]
+#[aspect(Logger)]
 #[aspect(Logger1)]
 #[aspect(Logger)]
 async fn add(a: i32, b: i32) -> i32 {
