@@ -32,6 +32,25 @@ fn generate_async_send_args(capture_idents: &[syn::Ident]) -> TokenStream {
     quote! { vec![#(Box::new(#capture_idents.clone()) as Box<dyn Any + Send + Sync>),*] }
 }
 
+fn has_receiver(func: &ItemFn) -> bool {
+    func.sig
+        .inputs
+        .iter()
+        .any(|arg| matches!(arg, syn::FnArg::Receiver(_)))
+}
+
+fn generate_original_call(
+    original_fn_name: &syn::Ident,
+    param_names: &[&Box<syn::Pat>],
+    has_receiver: bool,
+) -> TokenStream {
+    if has_receiver {
+        quote! { Self::#original_fn_name(self #(, #param_names)*) }
+    } else {
+        quote! { #original_fn_name(#(#param_names),*) }
+    }
+}
+
 /// Generates the aspect-woven code for a function.
 pub fn generate_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) -> TokenStream {
     let original_fn = func;
@@ -41,6 +60,7 @@ pub fn generate_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) -> Token
     let fn_output = &func.sig.output;
     let fn_generics = &func.sig.generics;
     let fn_where_clause = &func.sig.generics.where_clause;
+    let has_receiver = has_receiver(func);
     let fn_asyncness = &func.sig.asyncness;
 
     let aspect_expr = &aspect_info.aspect_expr;
@@ -85,6 +105,7 @@ pub fn generate_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) -> Token
             &debug_arg_idents,
             &return_type,
             is_result,
+            has_receiver,
         )
     } else {
         generate_sync_around_call(
@@ -94,6 +115,7 @@ pub fn generate_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) -> Token
             &param_names,
             &return_type,
             is_result,
+            has_receiver,
         )
     };
 
@@ -114,9 +136,11 @@ fn generate_sync_around_call(
     param_names: &[&Box<syn::Pat>],
     _return_type: &TokenStream,
     is_result: bool,
+    has_receiver: bool,
 ) -> TokenStream {
     let fn_name_str = fn_name.to_string();
     let args_expr = generate_sync_args(param_names);
+    let original_call = generate_original_call(original_fn_name, param_names, has_receiver);
 
     if is_result {
         // For Result types, unwrap and propagate errors properly
@@ -138,7 +162,7 @@ fn generate_sync_around_call(
             };
             let __pjp = ProceedingJoinPoint::new(
                 || {
-                    match #original_fn_name(#(#param_names),*) {
+                    match #original_call {
                         Ok(__val) => Ok(Box::new(__val) as Box<dyn Any>),
                         Err(__err) => Err(AspectError::execution(format!("{:?}", __err))),
                     }
@@ -181,7 +205,7 @@ fn generate_sync_around_call(
             };
             let __pjp = ProceedingJoinPoint::new(
                 || {
-                    let __result = #original_fn_name(#(#param_names),*);
+                    let __result = #original_call;
                     Ok(Box::new(__result) as Box<dyn Any>)
                 },
                 __context,
@@ -212,10 +236,12 @@ fn generate_async_around_call(
     debug_arg_idents: &[syn::Ident],
     _return_type: &TokenStream,
     is_result: bool,
+    has_receiver: bool,
 ) -> TokenStream {
     let fn_name_str = fn_name.to_string();
     let (capture_idents, capture_bindings) = generate_async_arg_captures(debug_arg_idents);
     let args_expr = generate_async_args(&capture_idents);
+    let original_call = generate_original_call(original_fn_name, param_names, has_receiver);
 
     if is_result {
         return quote! {
@@ -234,7 +260,7 @@ fn generate_async_around_call(
                 args: #args_expr,
             });
 
-            match #original_fn_name(#(#param_names),*).await {
+            match #original_call.await {
                 Ok(__value) => {
                     let __after_context = JoinPoint {
                         function_name: #fn_name_str,
@@ -281,7 +307,7 @@ fn generate_async_around_call(
                 args: #args_expr,
             });
 
-            let __result = #original_fn_name(#(#param_names),*).await;
+            let __result = #original_call.await;
             let __after_context = JoinPoint {
                 function_name: #fn_name_str,
                 module_path: module_path!(),
@@ -351,6 +377,7 @@ pub fn generate_async_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) ->
     let fn_output = &func.sig.output;
     let fn_generics = &func.sig.generics;
     let fn_where_clause = &func.sig.generics.where_clause;
+    let has_receiver = has_receiver(func);
 
     let aspect_expr = &aspect_info.aspect_expr;
 
@@ -402,6 +429,7 @@ pub fn generate_async_aspect_wrapper(aspect_info: &AspectInfo, func: &ItemFn) ->
         is_result,
         returns_impl_trait,
         aspect_info.has_custom_async_around,
+        has_receiver,
     );
 
     quote! {
@@ -423,10 +451,12 @@ fn generate_async_aspect_call(
     is_result: bool,
     returns_impl_trait: bool,
     has_custom_async_around: bool,
+    has_receiver: bool,
 ) -> TokenStream {
     let fn_name_str = fn_name.to_string();
     let (capture_idents, capture_bindings) = generate_async_arg_captures(debug_arg_idents);
     let args_expr = generate_async_send_args(&capture_idents);
+    let original_call = generate_original_call(original_fn_name, param_names, has_receiver);
 
     if !has_custom_async_around {
         if is_result {
@@ -447,7 +477,7 @@ fn generate_async_aspect_call(
                     args: #args_expr,
                 }).await;
 
-                match #original_fn_name(#(#param_names),*).await {
+                match #original_call.await {
                     Ok(__value) => {
                         let __after_context = AsyncJoinPoint {
                             function_name: #fn_name_str,
@@ -496,7 +526,7 @@ fn generate_async_aspect_call(
                 args: #args_expr,
             }).await;
 
-            let __result = #original_fn_name(#(#param_names),*).await;
+            let __result = #original_call.await;
             let __after_context = AsyncJoinPoint {
                 function_name: #fn_name_str,
                 module_path: module_path!(),
@@ -532,7 +562,7 @@ fn generate_async_aspect_call(
             let __pjp = AsyncProceedingJoinPoint::new(
                 move || {
                     Box::pin(async move {
-                        match #original_fn_name(#(#param_names),*).await {
+                        match #original_call.await {
                             Ok(__val) => Ok(Box::new(__val) as Box<dyn Any + Send + Sync>),
                             Err(__err) => Err(AspectError::execution(format!("{:?}", __err))),
                         }
@@ -582,7 +612,7 @@ fn generate_async_aspect_call(
             let __pjp = AsyncProceedingJoinPoint::new(
                 move || {
                     Box::pin(async move {
-                        let __result = #original_fn_name(#(#param_names),*).await;
+                        let __result = #original_call.await;
                         Ok(Box::new(__result) as Box<dyn Any + Send + Sync>)
                     })
                 },
@@ -713,8 +743,18 @@ mod tests {
 
         assert_eq!(sync_tokens.matches("__aspect . around (__pjp)").count(), 0);
         assert_eq!(sync_tokens.matches("__aspect . after_error (").count(), 0);
-        assert_eq!(sync_tokens.matches("__aspect . after (& __after_context").count(), 1);
-        assert_eq!(async_tokens.matches("__aspect . after (& __after_context").count(), 1);
+        assert_eq!(
+            sync_tokens
+                .matches("__aspect . after (& __after_context")
+                .count(),
+            1
+        );
+        assert_eq!(
+            async_tokens
+                .matches("__aspect . after (& __after_context")
+                .count(),
+            1
+        );
         assert_eq!(async_tokens.matches("__aspect . after_error (").count(), 0);
     }
 
@@ -730,5 +770,31 @@ mod tests {
         assert!(tokens.contains("__aspect . before (& AsyncJoinPoint"));
         assert!(tokens.contains("__aspect . after (& __after_context"));
         assert!(!tokens.contains("__aspect . around (__pjp) . await"));
+    }
+
+    #[test]
+    fn test_generate_async_aspect_wrapper_calls_original_method_with_receiver() {
+        let func: ItemFn = parse_quote! {
+            async fn query(&self, id: u64) -> String {
+                format!("{}", id)
+            }
+        };
+        let aspect_info = AspectInfo::parse(parse_quote!(Logger)).unwrap();
+        let tokens = generate_async_aspect_wrapper(&aspect_info, &func).to_string();
+
+        assert!(tokens.contains("Self :: __async_aspect_original_query (self , id) . await"));
+    }
+
+    #[test]
+    fn test_generate_sync_wrapper_calls_original_method_with_receiver() {
+        let func: ItemFn = parse_quote! {
+            fn query(&self, id: u64) -> String {
+                format!("{}", id)
+            }
+        };
+        let aspect_info = AspectInfo::parse(parse_quote!(Logger)).unwrap();
+        let tokens = generate_aspect_wrapper(&aspect_info, &func).to_string();
+
+        assert!(tokens.contains("Self :: __aspect_original_query (self , id)"));
     }
 }

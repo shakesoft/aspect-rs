@@ -44,7 +44,7 @@ pub struct AppState {
     pub redis: String,
 }
 
-#[aspect(Logger1)]
+// #[aspect(Logger1)]
 pub async fn hello(State(state): State<Arc<AppState>>, Query(item): Query<HelloRequest>) -> impl IntoResponse  {
     let res = add(1, 2).await;
     // println!("add result: {res}");
@@ -237,4 +237,18 @@ pub fn ok_result_data<T>(data: T) -> AppResult<Json<BaseResponse<T>>> {
         code: 0,
         data: Some(data),
     }))
+}
+
+
+struct MyDao
+{
+
+}
+
+impl MyDao
+{
+    #[aspect(Logger1)]
+    pub async fn query(&self, id: u64) -> String {
+        format!("Query result for id: {}", id)
+    }
 }
