@@ -3,6 +3,7 @@
 use proc_macro2::TokenStream;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use syn::{Expr, ImplItem, Item, ItemFn, Result, Type};
 
 use crate::codegen::{generate_aspect_wrapper, generate_async_aspect_wrapper};
@@ -63,28 +64,23 @@ fn validate_aspect_usage(
     Ok(())
 }
 
-fn is_async_aspect_type(type_name: &str) -> bool {
-    let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") else {
-        return false;
-    };
+#[derive(Clone, Copy)]
+enum Query {
+    AsyncImpl,
+    SyncAround,
+    AsyncAround,
+}
 
-    contains_async_impl_recursively(Path::new(&manifest_dir), type_name)
+fn is_async_aspect_type(type_name: &str) -> bool {
+    lookup(Query::AsyncImpl, type_name)
 }
 
 fn has_custom_sync_around(type_name: &str) -> bool {
-    let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") else {
-        return false;
-    };
-
-    contains_custom_sync_around_recursively(Path::new(&manifest_dir), type_name)
+    lookup(Query::SyncAround, type_name)
 }
 
 fn has_custom_async_around(type_name: &str) -> bool {
-    let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") else {
-        return false;
-    };
-
-    contains_custom_async_around_recursively(Path::new(&manifest_dir), type_name)
+    lookup(Query::AsyncAround, type_name)
 }
 
 fn extract_aspect_type_name(expr: &Expr) -> Option<String> {
@@ -98,182 +94,145 @@ fn extract_aspect_type_name(expr: &Expr) -> Option<String> {
     }
 }
 
-fn contains_async_impl_recursively(root: &Path, type_name: &str) -> bool {
-    let mut stack = vec![PathBuf::from(root)];
-
-    while let Some(path) = stack.pop() {
-        let Ok(metadata) = fs::metadata(&path) else {
-            continue;
-        };
-
-        if metadata.is_dir() {
-            let Ok(entries) = fs::read_dir(&path) else {
-                continue;
-            };
-
-            for entry in entries.flatten() {
-                stack.push(entry.path());
-            }
-            continue;
-        }
-
-        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
-            continue;
-        }
-
-        let Ok(contents) = fs::read_to_string(&path) else {
-            continue;
-        };
-
-        if file_contains_async_impl(&contents, type_name) {
-            return true;
-        }
-    }
-
-    false
+/// An `impl <trait> for <type>` found under `CARGO_MANIFEST_DIR`, reduced to
+/// plain data. `syn` nodes carry `proc_macro` spans that are only valid inside
+/// the expansion that parsed them, so the AST itself must never be cached.
+struct ImplSummary {
+    trait_name: String,
+    type_name: String,
+    has_around: bool,
 }
 
-fn contains_custom_sync_around_recursively(root: &Path, type_name: &str) -> bool {
-    let mut stack = vec![PathBuf::from(root)];
-
-    while let Some(path) = stack.pop() {
-        let Ok(metadata) = fs::metadata(&path) else {
-            continue;
-        };
-
-        if metadata.is_dir() {
-            let Ok(entries) = fs::read_dir(&path) else {
-                continue;
-            };
-
-            for entry in entries.flatten() {
-                stack.push(entry.path());
-            }
-            continue;
-        }
-
-        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
-            continue;
-        }
-
-        let Ok(contents) = fs::read_to_string(&path) else {
-            continue;
-        };
-
-        if file_contains_custom_sync_around(&contents, type_name) {
-            return true;
-        }
-    }
-
-    false
+/// Answers one `Query` about one aspect type.
+fn lookup(query: Query, type_name: &str) -> bool {
+    impl_summaries()
+        .iter()
+        .any(|summary| summary_matches(summary, query, type_name))
 }
 
-fn contains_custom_async_around_recursively(root: &Path, type_name: &str) -> bool {
-    let mut stack = vec![PathBuf::from(root)];
-
-    while let Some(path) = stack.pop() {
-        let Ok(metadata) = fs::metadata(&path) else {
-            continue;
-        };
-
-        if metadata.is_dir() {
-            let Ok(entries) = fs::read_dir(&path) else {
-                continue;
-            };
-
-            for entry in entries.flatten() {
-                stack.push(entry.path());
-            }
-            continue;
-        }
-
-        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
-            continue;
-        }
-
-        let Ok(contents) = fs::read_to_string(&path) else {
-            continue;
-        };
-
-        if file_contains_custom_async_around(&contents, type_name) {
-            return true;
-        }
-    }
-
-    false
-}
-
-fn file_contains_async_impl(contents: &str, type_name: &str) -> bool {
-    let Ok(file) = syn::parse_file(contents) else {
+fn summary_matches(summary: &ImplSummary, query: Query, type_name: &str) -> bool {
+    if summary.type_name != type_name {
         return false;
-    };
+    }
 
-    file.items.iter().any(|item| {
-        let Item::Impl(item_impl) = item else {
-            return false;
+    match query {
+        Query::AsyncImpl => summary.trait_name == "AsyncAspect",
+        Query::SyncAround => summary.trait_name == "Aspect" && summary.has_around,
+        Query::AsyncAround => summary.trait_name == "AsyncAspect" && summary.has_around,
+    }
+}
+
+/// Every trait impl under `CARGO_MANIFEST_DIR`, scanned once per process:
+/// every `#[aspect]` in a crate interrogates the same unchanging source tree.
+fn impl_summaries() -> &'static [ImplSummary] {
+    static SUMMARIES: OnceLock<Vec<ImplSummary>> = OnceLock::new();
+
+    SUMMARIES.get_or_init(|| {
+        let Some(root) = std::env::var_os("CARGO_MANIFEST_DIR") else {
+            return Vec::new();
         };
 
-        impl_targets_trait(item_impl, "AsyncAspect", type_name)
+        let mut summaries = Vec::new();
+        let mut stack = vec![PathBuf::from(root)];
+
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = fs::read_dir(&dir) else {
+                continue;
+            };
+
+            for entry in entries.flatten() {
+                // `DirEntry` already carries the type on every platform we
+                // build for, so this avoids a `stat` syscall per entry.
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+                let path = entry.path();
+
+                if file_type.is_dir() {
+                    if !is_skipped_dir(&path) {
+                        stack.push(path);
+                    }
+                    continue;
+                }
+
+                if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+                    continue;
+                }
+
+                let Ok(contents) = fs::read_to_string(&path) else {
+                    continue;
+                };
+                let Ok(file) = syn::parse_file(&contents) else {
+                    continue;
+                };
+
+                summaries.extend(summarize_impls(&file));
+            }
+        }
+
+        summaries
     })
 }
 
-fn file_contains_custom_sync_around(contents: &str, type_name: &str) -> bool {
-    file_contains_custom_around(contents, "Aspect", type_name)
-}
+fn summarize_impls(file: &syn::File) -> Vec<ImplSummary> {
+    file.items
+        .iter()
+        .filter_map(|item| {
+            let Item::Impl(item_impl) = item else {
+                return None;
+            };
+            let (_, trait_path, _) = item_impl.trait_.as_ref()?;
+            let Type::Path(self_ty) = item_impl.self_ty.as_ref() else {
+                return None;
+            };
 
-fn file_contains_custom_async_around(contents: &str, type_name: &str) -> bool {
-    file_contains_custom_around(contents, "AsyncAspect", type_name)
-}
-
-fn file_contains_custom_around(contents: &str, trait_name: &str, type_name: &str) -> bool {
-    let Ok(file) = syn::parse_file(contents) else {
-        return false;
-    };
-
-    file.items.iter().any(|item| {
-        let Item::Impl(item_impl) = item else {
-            return false;
-        };
-
-        impl_targets_trait(item_impl, trait_name, type_name)
-            && item_impl.items.iter().any(|impl_item| {
-                matches!(
-                    impl_item,
-                    ImplItem::Fn(method) if method.sig.ident == "around"
-                )
+            Some(ImplSummary {
+                trait_name: trait_path.segments.last()?.ident.to_string(),
+                type_name: self_ty.path.segments.last()?.ident.to_string(),
+                has_around: item_impl.items.iter().any(|impl_item| {
+                    matches!(impl_item, ImplItem::Fn(method) if method.sig.ident == "around")
+                }),
             })
-    })
+        })
+        .collect()
 }
 
-fn impl_targets_trait(item_impl: &syn::ItemImpl, trait_name: &str, type_name: &str) -> bool {
-    let Some((_, trait_path, _)) = &item_impl.trait_ else {
+// ponytail: build output, VCS and vendor dirs hold no aspect impls but do hold
+// most of a project's files - `target/` plus `node_modules/` were ~44k entries
+// in the crate that motivated this, re-walked three times per `#[aspect]`. If
+// generated code under `target/` ever needs scanning, take the roots from an
+// env var rather than widening the walk back to everything.
+fn is_skipped_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with('.') || matches!(name, "target" | "node_modules"))
+}
+
+/// Test-only entry point: runs a `Query` against a single source string
+/// through exactly the pipeline `lookup` uses.
+#[cfg(test)]
+fn source_matches(contents: &str, query: Query, type_name: &str) -> bool {
+    let Ok(file) = syn::parse_file(contents) else {
         return false;
     };
 
-    let trait_matches = trait_path
-        .segments
-        .last()
-        .map(|segment| segment.ident == trait_name)
-        .unwrap_or(false);
-    if !trait_matches {
-        return false;
-    }
-
-    match item_impl.self_ty.as_ref() {
-        Type::Path(type_path) => type_path
-            .path
-            .segments
-            .last()
-            .map(|segment| segment.ident == type_name)
-            .unwrap_or(false),
-        _ => false,
-    }
+    summarize_impls(&file)
+        .iter()
+        .any(|summary| summary_matches(summary, query, type_name))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use syn::parse_quote;
+
+    #[test]
+    fn skips_build_and_vendor_dirs() {
+        assert!(is_skipped_dir(Path::new("proj/target")));
+        assert!(is_skipped_dir(Path::new("proj/node_modules")));
+        assert!(is_skipped_dir(Path::new("proj/.git")));
+        assert!(!is_skipped_dir(Path::new("proj/src")));
+    }
 
     #[test]
     fn detects_custom_sync_around_even_with_other_methods() {
@@ -291,7 +250,7 @@ mod tests {
             }
         "#;
 
-        assert!(file_contains_custom_sync_around(source, "Logger"));
+        assert!(source_matches(source, Query::SyncAround, "Logger"));
     }
 
     #[test]
@@ -302,7 +261,7 @@ mod tests {
             }
         "#;
 
-        assert!(file_contains_async_impl(source, "Logger1"));
+        assert!(source_matches(source, Query::AsyncImpl, "Logger1"));
     }
 
     #[test]
@@ -315,7 +274,7 @@ mod tests {
             }
         "#;
 
-        assert!(file_contains_custom_async_around(source, "Logger1"));
+        assert!(source_matches(source, Query::AsyncAround, "Logger1"));
     }
 
     #[test]
